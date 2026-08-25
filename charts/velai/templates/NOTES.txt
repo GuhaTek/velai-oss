@@ -26,4 +26,4 @@ Components:
 {{- end }}
 {{- end }}
 
-Full docs: https://github.com/GuhaTek-SaaS/velai-oss
+Full docs: https://github.com/GuhaTek/velai-oss

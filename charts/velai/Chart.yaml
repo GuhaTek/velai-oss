@@ -4,9 +4,9 @@ description: VelAI SRE CoPilot — Admin Console + Orchestrator + On-call agent 
 type: application
 version: 0.1.0
 appVersion: "1.0"
-home: https://github.com/GuhaTek-SaaS/velai-oss
+home: https://github.com/GuhaTek/velai-oss
 sources:
-  - https://github.com/GuhaTek-SaaS/velai-oss
+  - https://github.com/GuhaTek/velai-oss
 maintainers:
   - name: GuhaTek
 keywords:

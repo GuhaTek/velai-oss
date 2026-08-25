@@ -93,7 +93,7 @@ The incident responder:
 VelAI runs in your Kubernetes cluster and is installed with Helm:
 
 ```bash
-git clone https://github.com/GuhaTek-SaaS/velai-oss.git
+git clone https://github.com/GuhaTek/velai-oss.git
 cd velai-oss
 helm install velai ./charts/velai -n velai --create-namespace -f my-values.yaml
 ```
