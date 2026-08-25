@@ -14,7 +14,7 @@ images and two pre-created Secrets.
 ## 1. Get the chart
 
 ```bash
-git clone https://github.com/GuhaTek-SaaS/velai-oss.git
+git clone https://github.com/GuhaTek/velai-oss.git
 cd velai-oss
 kubectl create namespace velai
 ```
