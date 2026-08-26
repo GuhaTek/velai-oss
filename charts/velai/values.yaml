@@ -75,6 +75,50 @@ oncall:
     requests: { cpu: "100m", memory: "256Mi" }
     limits:   { cpu: "1",    memory: "1Gi" }
 
+# ── RCA agent (paid add-on — off unless licensed) ────────────────────────────
+# Root-cause analysis: the RCA agent + its MCP tool servers + Qdrant (vector
+# memory). OneGT sets rca.enabled=true and adds "rca" to externalSecrets.agents
+# when the tenant is licensed for it. The agent's LLM / ENABLED_MCPS / tool creds
+# are configured in the Admin Console like the other agents. RCA reuses the shared
+# in-cluster Redis (DB 1); with plain Redis its checkpointer degrades to in-memory
+# (fine — the orchestrator already queues alerts upstream).
+rca:
+  enabled: false
+  # Set true when rca.agent.image is a per-client OBFUSCATED image (loader entrypoint).
+  # Adds a RAM-backed exec tmpfs the loader unseals protected.myc into. Harmless-but-
+  # unused for a plain image; leave false then.
+  protected: false
+  agent:
+    image: "velai-shared/rca-agent:latest"   # per-client obfuscated image goes here
+    port: 8080
+    replicas: 1
+    progressDeadlineSeconds: 1080
+    nodeSelector: {}
+    resources:
+      requests: { cpu: "250m", memory: "512Mi" }
+      limits:   { cpu: "1",    memory: "2Gi" }
+  mcp:
+    port: 8000
+    resources:
+      requests: { cpu: "50m",  memory: "128Mi" }
+      limits:   { cpu: "250m", memory: "512Mi" }
+    # Tool servers the RCA planner can call. kubernetes (in-cluster, read-only RBAC)
+    # + prometheus by default; add newrelic/opensearch/gitlab as needed, then enable
+    # them via ENABLED_MCPS in the Admin Console.
+    servers:
+      - { name: kubernetes, image: "velai-shared/kubernetes-mcp-server:latest" }
+      - { name: prometheus, image: "velai-shared/prometheus-mcp-server:latest" }
+  qdrant:
+    image: "qdrant/qdrant:v1.9.2"
+    port: 6333
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "1",    memory: "1Gi" }
+  # Kafka ingestion off => RCA runs the graph inline from the webhook (no broker).
+  kafka:
+    enabled: false
+    bootstrapServers: "kafka:9092"
+
 # ── Licence ──────────────────────────────────────────────────────────────────
 # The agents authenticate to the VelAI licence server on startup + daily. Create
 # the Secret below from the credential bundle you were issued (it holds

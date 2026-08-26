@@ -1,0 +1,228 @@
+{{- if .Values.rca.enabled }}
+{{- $full := include "velai.fullname" . -}}
+{{- $reg := .Values.image.registry -}}
+# ============================================================================
+# RCA agent (paid add-on). Root-cause analysis stack: the RCA agent + its MCP
+# tool servers (k8s/prometheus/…) + Qdrant (vector memory). Enable only when the
+# tenant is licensed for it (OneGT renders rca.enabled + adds "rca" to
+# externalSecrets.agents from the licence). The agent's own config (LLM, ENABLED_MCPS,
+# tool creds) comes from the Admin Console like every other agent.
+# ============================================================================
+# ── Read-only RBAC for the Kubernetes MCP server ────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $full }}-mcp-kubernetes
+  labels: {{- include "velai.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $full }}-{{ .Release.Namespace }}-mcp-kubernetes-read
+  labels: {{- include "velai.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events", "nodes", "namespaces", "services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "daemonsets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $full }}-{{ .Release.Namespace }}-mcp-kubernetes-read
+  labels: {{- include "velai.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $full }}-mcp-kubernetes
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ $full }}-{{ .Release.Namespace }}-mcp-kubernetes-read
+  apiGroup: rbac.authorization.k8s.io
+# ── MCP tool servers ────────────────────────────────────────────────────────
+{{- range .Values.rca.mcp.servers }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}-mcp-{{ .name }}
+  labels:
+    {{- include "velai.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: mcp-{{ .name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $full }}-mcp-{{ .name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $full }}-mcp-{{ .name }}
+        app.kubernetes.io/component: mcp-{{ .name }}
+    spec:
+      {{- if eq .name "kubernetes" }}
+      serviceAccountName: {{ $full }}-mcp-kubernetes
+      {{- end }}
+      {{- include "velai.imagePullSecrets" $ | nindent 6 }}
+      containers:
+        - name: mcp-{{ .name }}
+          image: {{ include "velai.image" (dict "registry" $reg "image" .image) | quote }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ $.Values.rca.mcp.port }}
+          {{- if $.Values.externalSecrets.enabled }}
+          envFrom:
+            {{- include "velai.agentConfigEnvFrom" (dict "root" $ "agent" "rca") | nindent 12 }}
+          {{- end }}
+          resources: {{- toYaml $.Values.rca.mcp.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-mcp-{{ .name }}
+  labels: {{- include "velai.labels" $ | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: {{ $full }}-mcp-{{ .name }}
+  ports:
+    - port: {{ $.Values.rca.mcp.port }}
+      targetPort: {{ $.Values.rca.mcp.port }}
+      name: http
+{{- end }}
+# ── Qdrant (RCA vector memory) ──────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}-qdrant
+  labels:
+    {{- include "velai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $full }}-qdrant
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $full }}-qdrant
+        app.kubernetes.io/component: qdrant
+    spec:
+      containers:
+        - name: qdrant
+          image: {{ .Values.rca.qdrant.image | quote }}
+          ports:
+            - containerPort: {{ .Values.rca.qdrant.port }}
+          resources: {{- toYaml .Values.rca.qdrant.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-qdrant
+  labels: {{- include "velai.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: {{ $full }}-qdrant
+  ports:
+    - port: {{ .Values.rca.qdrant.port }}
+      targetPort: {{ .Values.rca.qdrant.port }}
+      name: http
+# ── RCA agent ───────────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}-rca-agent
+  labels:
+    {{- include "velai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rca-agent
+spec:
+  replicas: {{ .Values.rca.agent.replicas }}
+  # The rca-agent image is large (torch/embeddings); give the cold pull a generous window so
+  # `helm --wait` doesn't wrongly fail before the pod becomes Ready.
+  progressDeadlineSeconds: {{ .Values.rca.agent.progressDeadlineSeconds }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $full }}-rca-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $full }}-rca-agent
+        app.kubernetes.io/component: rca-agent
+      {{- with .Values.podAnnotations }}
+      annotations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- include "velai.imagePullSecrets" . | nindent 6 }}
+      {{- with .Values.rca.agent.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: rca-agent
+          image: {{ include "velai.image" (dict "registry" $reg "image" .Values.rca.agent.image) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.rca.agent.port }}
+          env:
+            {{- include "velai.licenseEnv" . | nindent 12 }}
+            # Infra wiring — agent config (models, ENABLED_MCPS, creds) comes from the Admin Console.
+            - name: REDIS_URL
+              value: {{ printf "redis://%s-redis:%v/1" $full (.Values.redis.port | toString) | quote }}
+            - name: QDRANT_URL
+              value: "http://{{ $full }}-qdrant:{{ .Values.rca.qdrant.port }}"
+            - name: KAFKA_ENABLED
+              value: {{ .Values.rca.kafka.enabled | quote }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.rca.kafka.bootstrapServers | quote }}
+            {{- if .Values.orchestrator.enabled }}
+            - name: ORCHESTRATOR_CALLBACK_URL
+              value: "http://{{ $full }}-orchestrator:{{ .Values.orchestrator.port }}/callbacks/rca"
+            {{- end }}
+            {{- if .Values.rca.protected }}
+            # Per-client obfuscated image: the boot loader unseals protected.myc into
+            # this RAM-backed, exec-allowed tmpfs at startup — the decrypted .so never
+            # touch disk. Requires the emptyDir{medium:Memory} volume mounted below.
+            - name: VELAI_PROTECT_TMPDIR
+              value: /mods
+            {{- end }}
+          envFrom:
+            {{- include "velai.commonEnvFrom" . | nindent 12 }}
+            {{- include "velai.agentConfigEnvFrom" (dict "root" . "agent" "rca") | nindent 12 }}
+            {{- include "velai.dbEnvFrom" . | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /, port: {{ .Values.rca.agent.port }} }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources: {{- toYaml .Values.rca.agent.resources | nindent 12 }}
+          {{- if .Values.rca.protected }}
+          volumeMounts:
+            - name: protect-tmp
+              mountPath: /mods
+          {{- end }}
+      {{- if .Values.rca.protected }}
+      # RAM-backed tmpfs for the protected loader (exec-allowed; never spills to disk).
+      volumes:
+        - name: protect-tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 128Mi
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-rca-agent
+  labels:
+    {{- include "velai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rca-agent
+spec:
+  selector:
+    app.kubernetes.io/name: {{ $full }}-rca-agent
+  ports:
+    - port: {{ .Values.rca.agent.port }}
+      targetPort: {{ .Values.rca.agent.port }}
+      name: http
+{{- end }}
