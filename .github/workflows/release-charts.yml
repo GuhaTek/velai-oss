@@ -1,0 +1,65 @@
+name: Release Helm chart (Helm repository + provenance)
+
+# Publishes charts/velai to the Helm repository on GitHub Pages, like other public charts:
+#   helm repo add velai https://guhatek.github.io/velai-oss
+#   helm install velai velai/velai --version <chart version>
+# chart-releaser packages the chart, signs it (a .prov provenance file, key "GuhaTek VelAI
+# Charts", fingerprint 11E1246DD4B6419DDD0668DA9B45F52D39E4B069), attaches both to a
+# GitHub Release "velai-<version>" and adds the version to index.yaml on gh-pages. A version
+# that's already released is skipped, never overwritten: bump charts/velai/Chart.yaml to publish.
+# Public key: pgp/velai-charts.asc. Secrets: GPG_KEYRING_BASE64 (the signing key, binary
+# keyring, base64) and GPG_PASSPHRASE.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'charts/velai/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - uses: azure/setup-helm@v4
+
+      - name: Lint
+        run: helm lint charts/velai
+
+      - name: Signing key
+        env:
+          GPG_KEYRING_BASE64: ${{ secrets.GPG_KEYRING_BASE64 }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$GPG_KEYRING_BASE64" | base64 -d > "$RUNNER_TEMP/secring.gpg"
+          printf '%s' "$GPG_PASSPHRASE" > "$RUNNER_TEMP/gpg-passphrase"
+
+      - name: Package, sign and release
+        uses: helm/chart-releaser-action@v1.7.0
+        with:
+          charts_dir: charts
+          skip_existing: true
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CR_SIGN: "true"
+          CR_KEY: GuhaTek VelAI Charts
+          CR_KEYRING: ${{ runner.temp }}/secring.gpg
+          CR_PASSPHRASE_FILE: ${{ runner.temp }}/gpg-passphrase
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/secring.gpg" "$RUNNER_TEMP/gpg-passphrase"
