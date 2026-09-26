@@ -46,6 +46,8 @@ spec:
               value: {{ .Values.adminConsole.oidc.clientId | quote }}
             - name: OIDC_ADMIN_GROUP
               value: {{ .Values.adminConsole.oidc.adminGroup | quote }}
+            - name: OIDC_ROLE_GROUPS
+              value: {{ .Values.adminConsole.oidc.roleGroups | default "" | quote }}
             - name: GOOGLE_ALLOWED_DOMAIN
               value: {{ .Values.adminConsole.allowedDomain | quote }}
             - name: ADMIN_EMAILS
