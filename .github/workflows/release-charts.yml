@@ -38,6 +38,11 @@ jobs:
       - name: Lint
         run: helm lint charts/velai
 
+      # chart-releaser resolves Chart.yaml dependencies while packaging and needs their
+      # repositories registered (external-secrets subchart).
+      - name: Add dependency repositories
+        run: helm repo add external-secrets https://charts.external-secrets.io
+
       - name: Signing key
         env:
           GPG_KEYRING_BASE64: ${{ secrets.GPG_KEYRING_BASE64 }}
