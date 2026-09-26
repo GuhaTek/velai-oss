@@ -33,6 +33,8 @@ spec:
             - containerPort: {{ .Values.orchestrator.port }}
           env:
             {{- include "velai.licenseEnv" . | nindent 12 }}
+            {{- include "velai.internalTokenEnv" . | nindent 12 }}
+            {{- include "velai.protectEnv" (dict "p" .Values.orchestrator.protected) | nindent 12 }}
             - name: ONCALL_BASE_URL
               value: "http://{{ $fn }}-oncall:{{ .Values.oncall.port }}"
             - name: REDIS_URL
@@ -48,6 +50,8 @@ spec:
             httpGet: { path: /healthz, port: {{ .Values.orchestrator.port }} }
             initialDelaySeconds: 20
           resources: {{- toYaml .Values.orchestrator.resources | nindent 12 }}
+          {{- include "velai.protectMount" (dict "p" .Values.orchestrator.protected) | nindent 10 }}
+      {{- include "velai.protectVolume" (dict "p" .Values.orchestrator.protected) | nindent 6 }}
       {{- with .Values.tolerations }}
       tolerations: {{- toYaml . | nindent 8 }}
       {{- end }}
