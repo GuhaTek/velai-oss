@@ -62,9 +62,10 @@ orchestrator:
   image: "velai-shared/orchestrator:latest"
   replicas: 1
   port: 8080
-  # Protected image (issued per tenant, e.g. velai-tenant/<slug>/orchestrator:<version>): the
-  # agent's compiled modules are sealed to your cluster + licence and unsealed at start into
-  # a RAM-backed tmpfs, so they never touch disk. Needs VELAI_SEAL_KEY in the licence Secret.
+  # Protected image (e.g. velai-shared/orchestrator:<version>): the agent's compiled modules are
+  # sealed and unsealed at start into a RAM-backed tmpfs, so they never touch disk. The image
+  # fetches its key from the VelAI licence server at start (licence-gated, bound to your
+  # cluster). Images built for one tenant (velai-tenant/<slug>/...) instead need VELAI_SEAL_KEY.
   protected:
     enabled: false
     tmpfsSize: "256Mi"
@@ -77,9 +78,10 @@ oncall:
   image: "velai-shared/oncall:latest"
   replicas: 1
   port: 8080
-  # Protected image (issued per tenant, e.g. velai-tenant/<slug>/oncall:<version>): the
-  # agent's compiled modules are sealed to your cluster + licence and unsealed at start into
-  # a RAM-backed tmpfs, so they never touch disk. Needs VELAI_SEAL_KEY in the licence Secret.
+  # Protected image (e.g. velai-shared/oncall:<version>): the agent's compiled modules are
+  # sealed and unsealed at start into a RAM-backed tmpfs, so they never touch disk. The image
+  # fetches its key from the VelAI licence server at start (licence-gated, bound to your
+  # cluster). Images built for one tenant (velai-tenant/<slug>/...) instead need VELAI_SEAL_KEY.
   protected:
     enabled: false
     tmpfsSize: "256Mi"

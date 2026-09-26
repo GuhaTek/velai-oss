@@ -28,10 +28,10 @@ kubectl -n velai create secret generic velai-license \
   --from-literal=VELAI_LICENSE_URL=<your-licence-url> \
   --from-file=VELAI_LICENSE_KEY=./<slug>-tenant.key \
   --from-file=VELAI_LICENSE_CA=./<slug>-velai-ca.crt \
-  --from-literal=VELAI_SEAL_KEY='<seal key from your bundle>'
+  --from-literal=VELAI_SEAL_KEY='<seal key from your bundle>'   # only for per-tenant images
 ```
-`VELAI_SEAL_KEY` unseals your protected agent images (below). Tenants onboarded before
-protected images get it from VelAI as a one-line `kubectl patch` of this Secret.
+`VELAI_SEAL_KEY` is needed only if VelAI built agent images just for you
+(`velai-tenant/<slug>/...`); the standard images don't use it.
 
 **Admin Console** login + session (password hash is in your bundle; session secret is any 32+ random chars):
 ```bash
@@ -64,12 +64,12 @@ adminConsole:
     enabled: true
     className: "nginx"
     host: "velai.your-company.com"
-# Your agents are built for your cluster (protected images, see below):
+# Protected agent images (see below):
 orchestrator:
-  image: "velai-tenant/<slug>/orchestrator:<version>"
+  image: "velai-shared/orchestrator:<version>"
   protected: { enabled: true }
 oncall:
-  image: "velai-tenant/<slug>/oncall:<version>"
+  image: "velai-shared/oncall:<version>"
   protected: { enabled: true }
 license:
   clusterUid: "<kube-system namespace UID>"
@@ -77,13 +77,17 @@ license:
 
 ### Protected agent images
 
-The Orchestrator and On-call images VelAI issues you are **protected**: their compiled
-modules are sealed to your cluster (the kube-system namespace UID) and your seal key, and
+The Orchestrator and On-call images are **protected**: their compiled modules are sealed, and
 the image's loader unseals them at start into a RAM-backed tmpfs, so they never touch disk.
-With `<agent>.protected.enabled=true` the chart mounts that tmpfs; the seal key comes from
-`VELAI_SEAL_KEY` in the licence Secret. An image sealed for another cluster or key refuses to
-start. Your VelAI contact publishes new versions for your cluster; use the same `<version>`
-for every image.
+With `<agent>.protected.enabled=true` the chart mounts that tmpfs.
+
+At start the loader requests the image's key from the VelAI licence server, authenticating
+with your licence Secret. The key is issued only while your licence is valid and is bound to
+your cluster (the kube-system namespace UID), so a copied image won't start elsewhere. A new
+pod therefore needs the licence server reachable; container restarts inside a running pod
+don't. If VelAI built images just for your cluster (`velai-tenant/<slug>/...`), those use
+`VELAI_SEAL_KEY` from the licence Secret instead and need no licence-server call at start.
+Use the same `<version>` for every image.
 
 ### Automatic pull-secret refresh (recommended)
 
