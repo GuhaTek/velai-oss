@@ -152,6 +152,7 @@ more agents.
 | `orchestrator.protected.enabled` / `oncall.protected.enabled` | `false` | RAM tmpfs for protected (sealed) agent images |
 | `internalToken.existingSecret` | `""` | agents' shared internal token; generated + kept when empty |
 | `adminConsole.oidc.*` / `allowedDomain` | `""` | generic OIDC SSO (Google/JumpCloud/Okta) |
+| `adminConsole.oidc.roleGroups` | `""` | IdP group → console role, e.g. `velai-admins=admin,velai-ops=operator,velai-viewers=member` (highest wins; a Users-page assignment overrides) |
 | `adminConsole.ingress.*` | disabled | expose the console |
 | `postgresql.enabled` | `true` | in-cluster DB; set `externalUrl` to use your own |
 | `redis.enabled` | `true` | in-cluster Redis |

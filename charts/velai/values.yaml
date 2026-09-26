@@ -38,13 +38,17 @@ adminConsole:
   oidc:
     issuer: ""            # e.g. https://accounts.google.com
     clientId: ""
-    adminGroup: ""        # optional group required for the admin role
+    adminGroup: ""        # optional group required to sign in at all (a gate, not a role)
+    # Group -> console role from the `groups` claim: "grp=admin,grp=operator,grp=member".
+    # Highest mapped role wins; a Users-page assignment overrides it. The console refuses to
+    # start on an unknown role.
+    roleGroups: ""
   allowedDomain: ""       # restrict SSO sign-in to this email domain (optional)
   adminEmails: ""         # comma-separated emails granted the admin role
   sessionIdleMinutes: 30
   # Pre-created Secret with the admin-console runtime secrets:
   #   ADMIN_USERNAME, ADMIN_PASSWORD_HASH (from your VelAI credential bundle),
-  #   ADMIN_SESSION_SECRET (a random 32+ char string), and, if using SSO,
+  #   SESSION_SECRET (a random 32+ char string), and, if using SSO,
   #   OIDC_CLIENT_SECRET. See README.
   existingSecret: "velai-admin-secrets"
   ingress:
