@@ -1,0 +1,22 @@
+{{- /* Shared token for the agents' internal endpoints: existingSecret > preserved-on-upgrade >
+       generated. Kept on uninstall-free upgrades so running pods never see it change. */ -}}
+{{- if not .Values.internalToken.existingSecret }}
+{{- $name := printf "%s-internal" (include "velai.fullname" .) -}}
+{{- $existing := (lookup "v1" "Secret" .Release.Namespace $name) -}}
+{{- $token := "" -}}
+{{- if $existing -}}
+  {{- $token = index $existing.data "INTERNAL_API_TOKEN" | b64dec -}}
+{{- else -}}
+  {{- $token = randAlphaNum 48 -}}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  labels: {{- include "velai.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep   # keep the generated token across upgrades
+type: Opaque
+stringData:
+  INTERNAL_API_TOKEN: {{ $token | quote }}
+{{- end }}

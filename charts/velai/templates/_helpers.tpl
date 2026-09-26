@@ -109,6 +109,40 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- end }}
 {{- end -}}
 
+{{/* INTERNAL_API_TOKEN for the Console, Orchestrator and On-call agent (see internal-token.yaml). */}}
+{{- define "velai.internalTokenEnv" -}}
+- name: INTERNAL_API_TOKEN
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.internalToken.existingSecret | default (printf "%s-internal" (include "velai.fullname" .)) | quote }}
+      key: INTERNAL_API_TOKEN
+{{- end -}}
+
+{{/* Protected image wiring for an agent (call with (dict "p" <agent>.protected)): the loader
+     unseals the compiled modules into this RAM-backed, exec-capable tmpfs. */}}
+{{- define "velai.protectEnv" -}}
+{{- if .p.enabled }}
+- name: VELAI_PROTECT_TMPDIR
+  value: /var/velai-mods
+{{- end }}
+{{- end -}}
+{{- define "velai.protectMount" -}}
+{{- if .p.enabled }}
+volumeMounts:
+  - name: velai-mods
+    mountPath: /var/velai-mods
+{{- end }}
+{{- end -}}
+{{- define "velai.protectVolume" -}}
+{{- if .p.enabled }}
+volumes:
+  - name: velai-mods
+    emptyDir:
+      medium: Memory
+      sizeLimit: {{ .p.tmpfsSize | quote }}
+{{- end }}
+{{- end -}}
+
 {{- define "velai.imagePullSecrets" -}}
 {{- with .Values.imagePullSecrets }}
 imagePullSecrets:

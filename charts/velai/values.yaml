@@ -62,6 +62,12 @@ orchestrator:
   image: "velai-shared/orchestrator:latest"
   replicas: 1
   port: 8080
+  # Protected image (issued per tenant, e.g. velai-tenant/<slug>/orchestrator:<version>): the
+  # agent's compiled modules are sealed to your cluster + licence and unsealed at start into
+  # a RAM-backed tmpfs, so they never touch disk. Needs VELAI_SEAL_KEY in the licence Secret.
+  protected:
+    enabled: false
+    tmpfsSize: "256Mi"
   resources:
     requests: { cpu: "100m", memory: "256Mi" }
     limits:   { cpu: "1",    memory: "1Gi" }
@@ -71,19 +77,34 @@ oncall:
   image: "velai-shared/oncall:latest"
   replicas: 1
   port: 8080
+  # Protected image (issued per tenant, e.g. velai-tenant/<slug>/oncall:<version>): the
+  # agent's compiled modules are sealed to your cluster + licence and unsealed at start into
+  # a RAM-backed tmpfs, so they never touch disk. Needs VELAI_SEAL_KEY in the licence Secret.
+  protected:
+    enabled: false
+    tmpfsSize: "256Mi"
   resources:
     requests: { cpu: "100m", memory: "256Mi" }
     limits:   { cpu: "1",    memory: "1Gi" }
 
+# Token the Console, Orchestrator and On-call agent present to each other's internal
+# endpoints (they refuse calls without it). Generated into a chart-managed Secret on first
+# install and kept across upgrades; set existingSecret to supply your own (key
+# INTERNAL_API_TOKEN).
+internalToken:
+  existingSecret: ""
+
 # ── Licence ──────────────────────────────────────────────────────────────────
 # The agents authenticate to the VelAI licence server on startup + daily. Create
 # the Secret below from the credential bundle you were issued (it holds
-# VELAI_TENANT_SLUG, VELAI_LICENSE_URL, and the tenant key + CA cert), e.g.:
+# VELAI_TENANT_SLUG, VELAI_LICENSE_URL, the tenant key + CA cert, and VELAI_SEAL_KEY for
+# protected images), e.g.:
 #   kubectl -n velai create secret generic velai-license \
 #     --from-literal=VELAI_TENANT_SLUG=<slug> \
 #     --from-literal=VELAI_LICENSE_URL=<url> \
 #     --from-file=VELAI_LICENSE_KEY=./<slug>-tenant.key \
-#     --from-file=VELAI_LICENSE_CA=./<slug>-velai-ca.crt
+#     --from-file=VELAI_LICENSE_CA=./<slug>-velai-ca.crt \
+#     --from-literal=VELAI_SEAL_KEY='<seal key from your bundle>'
 license:
   existingSecret: "velai-license"
   # The cluster UID the licence is bound to (Guard 1). If empty, the agent reads
