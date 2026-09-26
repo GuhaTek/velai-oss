@@ -93,12 +93,12 @@ The incident responder:
 VelAI runs in your Kubernetes cluster and is installed with Helm:
 
 ```bash
-helm install velai oci://ghcr.io/guhatek/charts/velai --version <chart-version> \
-  -n velai --create-namespace -f my-values.yaml
+helm repo add velai https://guhatek.github.io/velai-oss
+helm repo update
+helm install velai velai/velai --version <chart-version> -n velai --create-namespace -f my-values.yaml
 ```
 
-Or from a clone: `git clone https://github.com/GuhaTek/velai-oss.git && helm install velai
-./velai-oss/charts/velai -n velai --create-namespace -f my-values.yaml`.
+Each chart release is signed; see [Verifying the chart](charts/velai/README.md#verifying-the-chart).
 
 You need a VelAI licence bundle and pull access to the VelAI images. The full
 install flow — required secrets, image pull options, secret backends, SSO,

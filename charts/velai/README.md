@@ -13,15 +13,27 @@ images and two pre-created Secrets.
 
 ## 1. Get the chart
 
-The chart is published as an OCI artifact — install it straight from the registry
-(`oci://ghcr.io/guhatek/charts/velai`, pinned with `--version`), no clone needed:
+The chart is published to a Helm repository (always pin `--version`):
 
 ```bash
-helm show chart oci://ghcr.io/guhatek/charts/velai --version <chart-version>
+helm repo add velai https://guhatek.github.io/velai-oss
+helm repo update
+helm search repo velai/velai --versions
 kubectl create namespace velai
 ```
 
-(Or `git clone https://github.com/GuhaTek/velai-oss.git` and use `./velai-oss/charts/velai`.)
+### Verifying the chart
+
+Every release is signed (a `.prov` provenance file next to the chart) with the key
+**GuhaTek VelAI Charts**, fingerprint `11E1 246D D4B6 419D DD06 68DA 9B45 F52D 39E4 B069`
+([`pgp/velai-charts.asc`](../../pgp/velai-charts.asc)). Helm reads a legacy binary keyring:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/GuhaTek/velai-oss/main/pgp/velai-charts.asc | gpg --dearmor > velai-charts.gpg
+helm install velai velai/velai --version <chart-version> --verify --keyring ./velai-charts.gpg ...
+```
+
+`--verify` refuses to install a chart whose signature or SHA-256 doesn't match.
 
 ## 2. Create the required Secrets
 
@@ -121,7 +133,7 @@ only that one secret). You don't pre-create `velai-pull` in this mode.
 ## 4. Install
 
 ```bash
-helm install velai oci://ghcr.io/guhatek/charts/velai --version <chart-version> -n velai -f my-values.yaml
+helm install velai velai/velai --version <chart-version> -n velai -f my-values.yaml   # add --verify --keyring ./velai-charts.gpg
 kubectl -n velai get pods -w
 ```
 
