@@ -1,0 +1,51 @@
+name: Publish Helm chart (OCI)
+
+# Packages charts/velai and pushes it to GitHub Container Registry as an OCI chart, so it
+# installs straight from a URL, with no git clone:
+#   helm install velai oci://ghcr.io/guhatek/charts/velai --version <chart version> -n velai
+# Runs when the chart changes on main. A version already in the registry is never
+# overwritten: bump `version` in charts/velai/Chart.yaml to publish a change.
+# One-time: after the first push, make the `charts/velai` package public
+# (Organization → Packages → charts/velai → Package settings → Change visibility).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'charts/velai/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  REPO: oci://ghcr.io/guhatek/charts
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: Lint
+        run: helm lint charts/velai
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+
+      - name: Package and push (skip if this version is already published)
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version: *//p' charts/velai/Chart.yaml | tr -d '"')
+          if helm show chart "$REPO/velai" --version "$version" >/dev/null 2>&1; then
+            echo "velai $version is already published; bump charts/velai/Chart.yaml version to publish changes."
+            echo "- velai **$version** already published (not overwritten)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          helm package charts/velai -d dist
+          helm push "dist/velai-${version}.tgz" "$REPO"
+          echo "- published \`$REPO/velai\` **$version**: \`helm install velai $REPO/velai --version $version\`" >> "$GITHUB_STEP_SUMMARY"

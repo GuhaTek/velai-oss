@@ -13,11 +13,15 @@ images and two pre-created Secrets.
 
 ## 1. Get the chart
 
+The chart is published as an OCI artifact — install it straight from the registry
+(`oci://ghcr.io/guhatek/charts/velai`, pinned with `--version`), no clone needed:
+
 ```bash
-git clone https://github.com/GuhaTek/velai-oss.git
-cd velai-oss
+helm show chart oci://ghcr.io/guhatek/charts/velai --version <chart-version>
 kubectl create namespace velai
 ```
+
+(Or `git clone https://github.com/GuhaTek/velai-oss.git` and use `./velai-oss/charts/velai`.)
 
 ## 2. Create the required Secrets
 
@@ -117,7 +121,7 @@ only that one secret). You don't pre-create `velai-pull` in this mode.
 ## 4. Install
 
 ```bash
-helm install velai ./charts/velai -n velai -f my-values.yaml
+helm install velai oci://ghcr.io/guhatek/charts/velai --version <chart-version> -n velai -f my-values.yaml
 kubectl -n velai get pods -w
 ```
 
