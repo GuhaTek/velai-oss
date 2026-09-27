@@ -33,6 +33,7 @@ spec:
             - containerPort: {{ .Values.oncall.port }}
           env:
             {{- include "velai.licenseEnv" . | nindent 12 }}
+            {{- include "velai.versionEnv" .Values.oncall.image | nindent 12 }}
             {{- include "velai.internalTokenEnv" . | nindent 12 }}
             {{- include "velai.protectEnv" (dict "p" .Values.oncall.protected) | nindent 12 }}
             - name: REDIS_URL

@@ -36,6 +36,7 @@ spec:
             - containerPort: {{ .Values.adminConsole.port }}
           env:
             {{- include "velai.licenseEnv" . | nindent 12 }}
+            {{- include "velai.versionEnv" .Values.adminConsole.image | nindent 12 }}
             {{- include "velai.internalTokenEnv" . | nindent 12 }}
             {{- include "velai.secretBackendEnv" . | nindent 12 }}
             - name: AUTH_DISABLED
