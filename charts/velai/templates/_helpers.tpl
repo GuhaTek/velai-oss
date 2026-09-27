@@ -37,6 +37,19 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- end }}
 {{- end -}}
 
+{{/* VELAI_AGENT_VERSION, reported in licence check-ins (OneGT's version column): the image tag,
+     e.g. velai-shared/orchestrator:0.1.535 -> 0.1.535. Images are reused byte-for-byte across
+     releases, so the version can't be baked in; the tag is what's actually running. Omitted
+     for a digest-pinned or untagged ref. Call with the component's image value. */}}
+{{- define "velai.versionEnv" -}}
+{{- $ref := toString . -}}
+{{- $last := last (splitList "/" $ref) -}}
+{{- if and (not (contains "@" $ref)) (contains ":" $last) }}
+- name: VELAI_AGENT_VERSION
+  value: {{ last (splitList ":" $last) | quote }}
+{{- end }}
+{{- end -}}
+
 {{/* Secret-backend env for the Admin Console (which WRITES config to the backend). SECRET_BACKEND
      plus the non-secret connection params for the chosen provider. Blank backend => only
      SECRET_BACKEND="" so the console starts unconfigured. */}}
