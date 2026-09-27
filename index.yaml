@@ -3,6 +3,32 @@ entries:
   velai:
   - apiVersion: v2
     appVersion: "1.0"
+    created: "2026-09-27T03:51:55.340574291Z"
+    dependencies:
+    - condition: eso.enabled
+      name: external-secrets
+      repository: https://charts.external-secrets.io
+      version: 0.9.20
+    description: VelAI SRE CoPilot — Admin Console + Orchestrator + On-call agent
+      for Kubernetes.
+    digest: 62d05dcbd04dcaa21f3dad8171bda1189ad047a2c4c66293fdbc34f3b1681f61
+    home: https://github.com/GuhaTek/velai-oss
+    keywords:
+    - sre
+    - incident-response
+    - rca
+    - on-call
+    maintainers:
+    - name: GuhaTek
+    name: velai
+    sources:
+    - https://github.com/GuhaTek/velai-oss
+    type: application
+    urls:
+    - https://github.com/GuhaTek/velai-oss/releases/download/velai-0.2.2/velai-0.2.2.tgz
+    version: 0.2.2
+  - apiVersion: v2
+    appVersion: "1.0"
     created: "2026-09-26T14:45:46.542675327Z"
     dependencies:
     - condition: eso.enabled
@@ -53,4 +79,4 @@ entries:
     urls:
     - https://github.com/GuhaTek/velai-oss/releases/download/velai-0.2.0/velai-0.2.0.tgz
     version: 0.2.0
-generated: "2026-09-26T14:45:46.542704192Z"
+generated: "2026-09-27T03:51:55.340604187Z"
