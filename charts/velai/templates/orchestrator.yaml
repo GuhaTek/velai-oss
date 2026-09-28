@@ -6,7 +6,10 @@ metadata:
   name: {{ $fn }}-orchestrator
   labels: {{- include "velai.labels" . | nindent 4 }}
 spec:
+  {{- /* Unset = the Admin Console owns on/off (scales 0/1); a number pins it from Helm. */}}
+  {{- if not (kindIs "invalid" .Values.orchestrator.replicas) }}
   replicas: {{ .Values.orchestrator.replicas }}
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/instance: {{ .Release.Name }}

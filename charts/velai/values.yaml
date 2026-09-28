@@ -64,7 +64,7 @@ adminConsole:
 orchestrator:
   enabled: true
   image: "velai-shared/orchestrator:latest"
-  replicas: 1
+  replicas: ~             # unset: starts at 1, then the Admin Console switches it on/off. A number pins it from Helm.
   port: 8080
   # Protected image (e.g. velai-shared/orchestrator:<version>): the agent's compiled modules are
   # sealed and unsealed at start into a RAM-backed tmpfs, so they never touch disk. The image
@@ -80,7 +80,7 @@ orchestrator:
 oncall:
   enabled: true
   image: "velai-shared/oncall:latest"
-  replicas: 1
+  replicas: ~             # unset: starts at 1, then the Admin Console switches it on/off. A number pins it from Helm.
   port: 8080
   # Protected image (e.g. velai-shared/oncall:<version>): the agent's compiled modules are
   # sealed and unsealed at start into a RAM-backed tmpfs, so they never touch disk. The image
