@@ -69,6 +69,11 @@ spec:
                   fieldPath: metadata.namespace
             - name: HEALTH_TARGETS
               value: {{ toJson $targets | quote }}
+            # Built-in MCP servers ship with the RCA agent, which this chart does not deploy. An
+            # explicit "[]" stops the console (>= 0.1.540) deriving default targets from
+            # SERVICE_PREFIX and listing five "not deployed" servers on the dashboard's MCP health panel.
+            - name: MCP_HEALTH_TARGETS
+              value: "[]"
             {{- if .Values.pullRefresh.enabled }}
             - name: VELAI_PULL_REFRESH_ENABLED
               value: "true"
