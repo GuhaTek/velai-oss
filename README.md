@@ -88,6 +88,14 @@ The incident responder:
 - **Review workflow** — sends draft summaries to the Admin Console for
   approval, then publishes to stakeholder channels
 
+### MCP servers (optional)
+Tool servers the RCA and conversation agents call — Kubernetes, Prometheus,
+New Relic, OpenSearch and GitLab. Off by default; enable each one with a
+single `helm upgrade` that the Admin Console generates for you. Credentials
+come from the console, each server gets only its own keys, and the
+Kubernetes server needs a cluster admin to install because it reads across
+namespaces. See [MCP servers](charts/velai/README.md#5-mcp-servers-optional).
+
 ## 🚀 Deployment
 
 VelAI runs in your Kubernetes cluster and is installed with Helm:

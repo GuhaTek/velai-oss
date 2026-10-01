@@ -93,10 +93,52 @@ oncall:
     requests: { cpu: "100m", memory: "256Mi" }
     limits:   { cpu: "1",    memory: "1Gi" }
 
+# ── Built-in MCP servers (optional, all off by default) ──────────────────────
+# Tool servers the RCA / conversation agents call (Kubernetes, Prometheus, New Relic,
+# OpenSearch, GitLab). Enable one with e.g. `--set mcp.prometheus.enabled=true` and point
+# its image at your VelAI version (velai-shared/mcp-prometheus:<version>). Services are
+# named <fullname>-mcp-<name>:8000, which is where the Admin Console tells agents to find
+# them — keep fullnameOverride unset (or "velai") when using MCP servers.
+#
+# kubernetes is the only server that reads the Kubernetes API: enabling it creates a
+# ClusterRole + ClusterRoleBinding (read-only pods/events/logs/workloads, cluster-wide), so
+# that upgrade must be run by someone with cluster-admin rights. It authenticates with its
+# own ServiceAccount; no kubeconfig is needed for the cluster it runs in.
+mcp:
+  port: 8000
+  # Settings scope the servers' credentials are read from (<externalSecrets.prefix>/<scope>):
+  # the scope the Admin Console compiles the RCA agent's MCP connections into. "rca" for the
+  # core RCA agent, or e.g. "agent-instances/rca/<instance>" for a named instance. Needs
+  # externalSecrets.enabled; each server receives only its own keys from that scope.
+  settingsScope: "rca"
+  # The published MCP images are protected (sealed) builds, unsealed at start like the agents.
+  protected:
+    enabled: true
+    tmpfsSize: "256Mi"
+  resources:
+    requests: { cpu: "50m", memory: "128Mi" }
+    limits:   { cpu: "250m", memory: "512Mi" }
+  kubernetes:
+    enabled: false
+    image: "velai-shared/mcp-kubernetes:latest"
+  prometheus:
+    enabled: false
+    image: "velai-shared/mcp-prometheus:latest"
+  newrelic:
+    enabled: false
+    image: "velai-shared/mcp-newrelic:latest"
+  opensearch:
+    enabled: false
+    image: "velai-shared/mcp-opensearch:latest"
+  gitlab:
+    enabled: false
+    image: "velai-shared/mcp-gitlab:latest"
+
 # Token the Console, Orchestrator and On-call agent present to each other's internal
 # endpoints (they refuse calls without it). Generated into a chart-managed Secret on first
 # install and kept across upgrades; set existingSecret to supply your own (key
-# INTERNAL_API_TOKEN).
+# INTERNAL_API_TOKEN). The same Secret carries MCP_AUTH_TOKEN, which the MCP servers require
+# from callers (without it they answer only /health); give your RCA agent the same value.
 internalToken:
   existingSecret: ""
 

@@ -156,6 +156,39 @@ volumes:
 {{- end }}
 {{- end -}}
 
+{{/* Built-in MCP servers, in display order, with the exact keys each one reads from the settings
+     scope: `params` are plain settings, `secrets` secret values. Each pod gets ONLY its own keys
+     (per-key secretKeyRef), never the whole scope — which also holds LLM/Slack credentials. Adding
+     a field to an integration in the Admin Console means adding its key here too. */}}
+{{- define "velai.mcpCatalog" -}}
+kubernetes:
+  params:  [K8S_AUTH_METHOD, K8S_CONTEXT, K8S_API_SERVER]
+  secrets: [KUBECONFIG_CONTENT, K8S_TOKEN, K8S_CA_CERT]
+prometheus:
+  params:  [PROMETHEUS_URL, PROM_AUTH_METHOD, PROM_USERNAME, PROM_OAUTH_CLIENT_ID, PROM_OAUTH_TOKEN_URL, PROM_OAUTH_SCOPES, PROM_AWS_ACCESS_KEY_ID, PROM_AWS_REGION]
+  secrets: [PROM_PASSWORD, PROM_BEARER_TOKEN, PROM_OAUTH_CLIENT_SECRET, PROM_AWS_SECRET_ACCESS_KEY, PROM_TLS_CERT, PROM_TLS_KEY, PROM_TLS_CA]
+newrelic:
+  params:  [NEWRELIC_ACCOUNT_ID, NEWRELIC_REGION]
+  secrets: [NEWRELIC_API_KEY]
+opensearch:
+  params:  [OPENSEARCH_URL, OPENSEARCH_USER, OPENSEARCH_LOG_INDEX, OPENSEARCH_VERIFY_CERTS]
+  secrets: [OPENSEARCH_PASSWORD]
+gitlab:
+  params:  [GITLAB_BASE_URL, GITLAB_REPO_MAP]
+  secrets: [GITLAB_TOKEN]
+{{- end -}}
+
+{{/* Names of the enabled MCP servers, comma-joined in catalog order ("" when none). Nil-safe:
+     `helm upgrade --reuse-values` from a chart without `mcp` carries no `mcp` key at all. */}}
+{{- define "velai.mcpEnabled" -}}
+{{- $mcp := .Values.mcp | default dict -}}
+{{- $on := list -}}
+{{- range $name := list "kubernetes" "prometheus" "newrelic" "opensearch" "gitlab" -}}
+{{- if (index $mcp $name | default dict).enabled -}}{{- $on = append $on $name -}}{{- end -}}
+{{- end -}}
+{{- join "," $on -}}
+{{- end -}}
+
 {{- define "velai.imagePullSecrets" -}}
 {{- with .Values.imagePullSecrets }}
 imagePullSecrets:

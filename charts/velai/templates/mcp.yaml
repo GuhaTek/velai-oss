@@ -1,0 +1,167 @@
+{{- /*
+Built-in MCP servers (see `mcp` in values.yaml). One Deployment + Service per enabled server,
+named <fullname>-mcp-<name>. Credentials come from the settings scope `mcp.settingsScope`, synced
+by externalsecrets.yaml into <fullname>-mcp-secrets (+ <fullname>-mcp-params on AWS); each pod
+references only its own keys, all optional, so a server with nothing configured still starts and
+reports "degraded" on /health.
+*/}}
+{{- $enabled := include "velai.mcpEnabled" . -}}
+{{- if $enabled }}
+{{- if not (and .Values.mcp.port .Values.mcp.protected .Values.mcp.resources) }}
+{{- fail "mcp: values are incomplete — this happens with `helm upgrade --reuse-values` from a chart version without MCP support, which keeps the old values and skips the new defaults. Re-run with --reset-then-reuse-values (Helm >= 3.14) or pass your values with -f." }}
+{{- end }}
+{{- $fn := include "velai.fullname" . -}}
+{{- $catalog := include "velai.mcpCatalog" . | fromYaml -}}
+{{- $secretsName := printf "%s-mcp-secrets" $fn -}}
+{{- $paramsName := ternary (printf "%s-mcp-params" $fn) $secretsName (eq .Values.secretBackend "aws") -}}
+{{- $tokenSecret := .Values.internalToken.existingSecret | default (printf "%s-internal" $fn) -}}
+{{- if .Values.mcp.kubernetes.enabled }}
+# ── Kubernetes MCP: read-only, cluster-wide (needs cluster-admin to install) ─────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fn }}-mcp-kubernetes
+  labels: {{- include "velai.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $fn }}-mcp-kubernetes-read
+  labels: {{- include "velai.labels" . | nindent 4 }}
+rules:
+  # Deliberately no secrets or configmaps: both routinely hold credentials, and an MCP
+  # result is sent on to an LLM.
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events", "nodes", "namespaces", "services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "daemonsets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $fn }}-mcp-kubernetes-read
+  labels: {{- include "velai.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $fn }}-mcp-kubernetes
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ $fn }}-mcp-kubernetes-read
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- end }}
+{{- range $name := splitList "," $enabled }}
+{{- $srv := index $.Values.mcp $name }}
+{{- $keys := index $catalog $name }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-mcp-{{ $name }}
+  labels:
+    {{- include "velai.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: mcp-{{ $name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      app.kubernetes.io/component: mcp-{{ $name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ $.Release.Name }}
+        app.kubernetes.io/component: mcp-{{ $name }}
+      {{- with $.Values.podAnnotations }}
+      annotations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- if eq $name "kubernetes" }}
+      serviceAccountName: {{ $fn }}-mcp-kubernetes
+      {{- else }}
+      automountServiceAccountToken: false
+      {{- end }}
+      {{- include "velai.imagePullSecrets" $ | nindent 6 }}
+      {{- with $.Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000        # the images run as appuser (uid 1000); numeric so the kubelet can verify non-root
+        runAsGroup: 1000
+      containers:
+        - name: mcp
+          image: {{ include "velai.image" (dict "registry" $.Values.image.registry "image" (required (printf "mcp.%s.image is required, e.g. velai-shared/mcp-%s:<version>" $name $name) $srv.image)) | quote }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ $.Values.mcp.port }}
+          env:
+            {{- include "velai.licenseEnv" $ | nindent 12 }}
+            {{- include "velai.versionEnv" $srv.image | nindent 12 }}
+            {{- include "velai.protectEnv" (dict "p" $.Values.mcp.protected) | nindent 12 }}
+            {{- if $.Values.mcp.protected.enabled }}
+            - name: VELAI_PROTECT_ENTRY
+              value: /app/server.py
+            {{- end }}
+            # Callers must present this; without it the server answers only /health.
+            - name: MCP_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $tokenSecret | quote }}
+                  key: MCP_AUTH_TOKEN
+                  optional: true
+            {{- range $key := $keys.params }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $paramsName }}
+                  key: {{ $key }}
+                  optional: true
+            {{- end }}
+            {{- range $key := $keys.secrets }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretsName }}
+                  key: {{ $key }}
+                  optional: true
+            {{- end }}
+          envFrom:
+            # Licence only (tenant identity + seal key for the protected image) — not
+            # agentConfig, which can hold LLM/Slack credentials an MCP server must not see.
+            - secretRef:
+                name: {{ $.Values.license.existingSecret | quote }}
+                optional: true
+          resources: {{- toYaml $.Values.mcp.resources | nindent 12 }}
+          {{- include "velai.protectMount" (dict "p" $.Values.mcp.protected) | nindent 10 }}
+      {{- include "velai.protectVolume" (dict "p" $.Values.mcp.protected) | nindent 6 }}
+      {{- with $.Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-mcp-{{ $name }}
+  labels:
+    {{- include "velai.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: mcp-{{ $name }}
+spec:
+  selector:
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/component: mcp-{{ $name }}
+  ports:
+    - port: {{ $.Values.mcp.port }}
+      targetPort: {{ $.Values.mcp.port }}
+      name: http
+---
+{{- end }}
+{{- end }}

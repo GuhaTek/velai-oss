@@ -1,13 +1,23 @@
-{{- /* Shared token for the agents' internal endpoints: existingSecret > preserved-on-upgrade >
-       generated. Kept on uninstall-free upgrades so running pods never see it change. */ -}}
+{{- /* Shared tokens for the agents' internal endpoints and the MCP servers: existingSecret >
+       preserved-on-upgrade > generated. Kept on uninstall-free upgrades so running pods never
+       see them change. MCP_AUTH_TOKEN is added to an existing Secret on the first upgrade that
+       renders it, without touching INTERNAL_API_TOKEN. */ -}}
 {{- if not .Values.internalToken.existingSecret }}
 {{- $name := printf "%s-internal" (include "velai.fullname" .) -}}
 {{- $existing := (lookup "v1" "Secret" .Release.Namespace $name) -}}
+{{- $data := dict -}}
+{{- if $existing -}}{{- $data = $existing.data | default dict -}}{{- end -}}
 {{- $token := "" -}}
-{{- if $existing -}}
-  {{- $token = index $existing.data "INTERNAL_API_TOKEN" | b64dec -}}
+{{- $mcpToken := "" -}}
+{{- if hasKey $data "INTERNAL_API_TOKEN" -}}
+  {{- $token = index $data "INTERNAL_API_TOKEN" | b64dec -}}
 {{- else -}}
   {{- $token = randAlphaNum 48 -}}
+{{- end -}}
+{{- if hasKey $data "MCP_AUTH_TOKEN" -}}
+  {{- $mcpToken = index $data "MCP_AUTH_TOKEN" | b64dec -}}
+{{- else -}}
+  {{- $mcpToken = randAlphaNum 48 -}}
 {{- end }}
 apiVersion: v1
 kind: Secret
@@ -15,8 +25,9 @@ metadata:
   name: {{ $name }}
   labels: {{- include "velai.labels" . | nindent 4 }}
   annotations:
-    helm.sh/resource-policy: keep   # keep the generated token across upgrades
+    helm.sh/resource-policy: keep   # keep the generated tokens across upgrades
 type: Opaque
 stringData:
   INTERNAL_API_TOKEN: {{ $token | quote }}
+  MCP_AUTH_TOKEN: {{ $mcpToken | quote }}
 {{- end }}
