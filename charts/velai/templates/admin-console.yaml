@@ -3,6 +3,8 @@
 {{- $targets := list }}
 {{- if .Values.orchestrator.enabled }}{{- $targets = append $targets (dict "key" "orchestrator" "label" "Orchestrator" "url" (printf "http://%s-orchestrator:%v/healthz" $fn .Values.orchestrator.port)) }}{{- end }}
 {{- if .Values.oncall.enabled }}{{- $targets = append $targets (dict "key" "oncall" "label" "On-Call" "url" (printf "http://%s-oncall:%v/healthz" $fn .Values.oncall.port)) }}{{- end }}
+{{- $mcpTargets := list }}
+{{- range $name := (include "velai.mcpEnabled" .) | splitList "," | compact }}{{- $mcpTargets = append $mcpTargets (dict "key" $name "url" (printf "http://%s-mcp-%s:%v/health" $fn $name $.Values.mcp.port)) }}{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -69,11 +71,12 @@ spec:
                   fieldPath: metadata.namespace
             - name: HEALTH_TARGETS
               value: {{ toJson $targets | quote }}
-            # Built-in MCP servers ship with the RCA agent, which this chart does not deploy. An
-            # explicit "[]" stops the console (>= 0.1.540) deriving default targets from
-            # SERVICE_PREFIX and listing five "not deployed" servers on the dashboard's MCP health panel.
+            # The MCP servers this release deploys (see `mcp` in values.yaml), for the dashboard's
+            # MCP health panel. Always rendered — "[]" when none — so the console (>= 0.1.540) never
+            # falls back to guessing names. Servers configured in the console but not enabled here
+            # still show there as "Not deployed".
             - name: MCP_HEALTH_TARGETS
-              value: "[]"
+              value: {{ toJson $mcpTargets | quote }}
             {{- if .Values.pullRefresh.enabled }}
             - name: VELAI_PULL_REFRESH_ENABLED
               value: "true"

@@ -141,6 +141,41 @@ Open the console (Ingress host, or `kubectl -n velai port-forward svc/velai-admi
 The console shows agent health + your licence status, and generates the commands to add
 more agents.
 
+## 5. MCP servers (optional)
+
+The built-in MCP servers (Kubernetes, Prometheus, New Relic, OpenSearch, GitLab) are the tools
+your RCA and conversation agents call. They are off by default; enable each one on your existing
+release. The Admin Console generates this command for you under **Integrations → MCP**:
+
+```bash
+helm repo update velai
+helm upgrade velai velai/velai --version <chart-version> -n velai --reset-then-reuse-values \
+  --set mcp.prometheus.enabled=true \
+  --set mcp.prometheus.image=velai-shared/mcp-prometheus:<version>
+kubectl -n velai rollout status deploy/velai-mcp-prometheus
+```
+
+- **Use `--reset-then-reuse-values`** (Helm 3.14+), not `--reuse-values`. Upgrading from a chart
+  version without MCP support with `--reuse-values` skips the new `mcp` defaults; the chart then
+  stops with an error that says so.
+- **No registry to set.** The image is `image.registry` (from your install) + `mcp.<name>.image`.
+- **Credentials** come from the Admin Console. Add the connection under Integrations, bind it to
+  the RCA agent, and set `mcp.settingsScope` to that agent's scope: `rca` (the default) or
+  `agent-instances/rca/<instance>` for a named instance. This needs `secretBackend` and
+  `externalSecrets.enabled=true`. Each server receives only its own keys from that scope, never
+  the LLM or Slack credentials stored beside them. Environment is read at start, so after changing
+  a credential run `kubectl -n velai rollout restart deploy/velai-mcp-<name>`.
+- **The Kubernetes server needs a cluster admin to install.** It reads pods, events, logs and
+  workloads across all namespaces (read-only; never Secrets or ConfigMaps), so the chart creates
+  a ClusterRole and ClusterRoleBinding. Someone with admin rights on the `velai` namespace only
+  gets `cannot get resource "clusterroles"` from Helm. It authenticates with its own
+  ServiceAccount, so no kubeconfig is needed for the cluster it runs in.
+- **Caller token.** The servers refuse tool calls without `MCP_AUTH_TOKEN`, which the chart
+  generates into the `velai-internal` Secret next to `INTERNAL_API_TOKEN`. Give your RCA agent the
+  same value. Without it the servers still answer `/health`.
+- **Health.** Each enabled server appears on the console dashboard under **MCP health**: green
+  when up and configured, amber "Degraded" when it runs but its credentials are missing or wrong.
+
 ## Key values
 
 | Key | Default | Notes |
@@ -150,7 +185,10 @@ more agents.
 | `license.existingSecret` | `velai-license` | licence bundle secret |
 | `license.clusterUid` | `""` | set to bind Guard 1 to this cluster (else read in-cluster) |
 | `orchestrator.protected.enabled` / `oncall.protected.enabled` | `false` | RAM tmpfs for protected (sealed) agent images |
-| `internalToken.existingSecret` | `""` | agents' shared internal token; generated + kept when empty |
+| `internalToken.existingSecret` | `""` | agents' shared internal + MCP tokens (`INTERNAL_API_TOKEN`, `MCP_AUTH_TOKEN`); generated + kept when empty |
+| `mcp.<name>.enabled` / `mcp.<name>.image` | `false` / `velai-shared/mcp-<name>:latest` | built-in MCP servers: `kubernetes`, `prometheus`, `newrelic`, `opensearch`, `gitlab` |
+| `mcp.settingsScope` | `rca` | console scope the MCP credentials are synced from |
+| `mcp.protected.enabled` | `true` | the published MCP images are protected (sealed) builds |
 | `adminConsole.oidc.*` / `allowedDomain` | `""` | generic OIDC SSO (Google/JumpCloud/Okta) |
 | `adminConsole.oidc.roleGroups` | `""` | IdP group → console role, e.g. `velai-admins=admin,velai-ops=operator,velai-viewers=member` (highest wins; a Users-page assignment overrides) |
 | `adminConsole.ingress.*` | disabled | expose the console |
