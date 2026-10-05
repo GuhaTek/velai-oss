@@ -60,18 +60,16 @@ kubectl -n velai create secret generic velai-admin-secrets \
 
 ## 3. Images & pull access
 
-The VelAI images are private. Set `image.registry` to the registry you were granted
-access to and provide a pull secret:
+The VelAI images are private and come from `registry.guhatek.com` (the chart default for
+`image.registry`; change it only if you mirror the images). Provide a pull secret:
 
 ```bash
 kubectl -n velai create secret docker-registry velai-pull \
-  --docker-server=<registry> --docker-username=<user> --docker-password=<token>
+  --docker-server=registry.guhatek.com --docker-username=<user> --docker-password=<token>
 ```
 
 ```yaml
 # my-values.yaml
-image:
-  registry: "<registry>"            # the registry host you were given
 imagePullSecrets:
   - name: velai-pull
 adminConsole:
@@ -180,7 +178,7 @@ kubectl -n velai rollout status deploy/velai-mcp-prometheus
 
 | Key | Default | Notes |
 |---|---|---|
-| `image.registry` | `ACCOUNT.dkr.ecr.REGION.amazonaws.com` | your pull registry host |
+| `image.registry` | `registry.guhatek.com` | the VelAI registry host (change only to mirror) |
 | `imagePullSecrets` | `[]` | docker-registry secret name(s) |
 | `license.existingSecret` | `velai-license` | licence bundle secret |
 | `license.clusterUid` | `""` | set to bind Guard 1 to this cluster (else read in-cluster) |

@@ -11,14 +11,13 @@ nameOverride: ""
 fullnameOverride: ""
 
 # ── Container images ─────────────────────────────────────────────────────────
-# Set `registry` to the registry VelAI grants you pull access to, and provide a
-# pull secret in imagePullSecrets (a private registry). The image names + tags
-# below are placeholders — override with the tags you were given.
+# The images come from the VelAI registry (private: provide a pull secret in
+# imagePullSecrets). The image tags below are placeholders — override with the
+# version you were given.
 image:
-  # The shared VelAI registry host you were given at onboarding, e.g.
-  # <account>.dkr.ecr.<region>.amazonaws.com. Combined with the repo names below
-  # to form <registry>/velai-shared/<component>:<tag>.
-  registry: "ACCOUNT.dkr.ecr.REGION.amazonaws.com"
+  # The VelAI registry host. Combined with the repo names below to form
+  # <registry>/velai-shared/<component>:<tag>. Change it only if you mirror the images.
+  registry: "registry.guhatek.com"
   pullPolicy: IfNotPresent
 # Name a pre-created docker-registry Secret used to pull the images, e.g.:
 #   kubectl -n velai create secret docker-registry velai-pull \
