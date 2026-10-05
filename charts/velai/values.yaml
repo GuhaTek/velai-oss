@@ -81,6 +81,9 @@ oncall:
   image: "velai-shared/oncall:latest"
   replicas: ~             # unset: starts at 1, then the Admin Console switches it on/off. A number pins it from Helm.
   port: 8080
+  # Settings scope this agent's config is synced from (<externalSecrets.prefix>/<scope>). Blank =
+  # "oncall". The Admin Console sets it for a named instance, e.g. "agent-instances/oncall/<name>".
+  settingsScope: ""
   # Protected image (e.g. velai-shared/oncall:<version>): the agent's compiled modules are
   # sealed and unsealed at start into a RAM-backed tmpfs, so they never touch disk. The image
   # fetches its key from the VelAI licence server at start (licence-gated, bound to your
@@ -91,6 +94,85 @@ oncall:
   resources:
     requests: { cpu: "100m", memory: "256Mi" }
     limits:   { cpu: "1",    memory: "1Gi" }
+
+# ── Licensed agents (optional, all off by default) ───────────────────────────
+# Conversation, RCA and Remediation are paid add-ons: enable one only when your licence includes
+# it, point its image at your VelAI version (velai-shared/<agent>:<version>) and add it to
+# externalSecrets.agents so it receives its config. The published images are protected builds
+# (protected.enabled=true). Each takes `settingsScope` like oncall above; the Admin Console's
+# instance / tenant pages print the exact values for a named deployment.
+conversation:
+  enabled: false
+  image: "velai-shared/conversation:latest"
+  replicas: 1
+  port: 8080
+  settingsScope: ""
+  protected:
+    enabled: true
+    tmpfsSize: "256Mi"
+  resources:
+    requests: { cpu: "100m", memory: "256Mi" }
+    limits:   { cpu: "500m", memory: "512Mi" }
+
+# RCA agent: root-cause analysis over alerts, using the MCP servers below as its tools. Uses the
+# chart Redis (DB 1) and Qdrant (vector memory, below). Its alert webhook requires RCA_API_KEY,
+# generated into the Secret <fullname>-agent-keys (read it to configure your alert source); the
+# orchestrator and on-call agent in the same release are given the same key automatically.
+rca:
+  enabled: false
+  image: "velai-shared/rca-agent:latest"
+  port: 8080
+  settingsScope: ""
+  protected:
+    enabled: true
+    tmpfsSize: "256Mi"
+  resources:
+    requests: { cpu: "250m", memory: "512Mi" }
+    limits:   { cpu: "1",    memory: "2Gi" }
+
+# Remediation agent: turns a completed RCA into a recovery plan, posted to Slack for approval, and
+# executes approved Kubernetes actions. Deployed with the embedding service below and shares the
+# RCA agent's Qdrant + Redis, so enable it on the release that runs `rca`.
+remediation:
+  enabled: false
+  image: "velai-shared/remediation:latest"
+  port: 8080
+  settingsScope: ""
+  # Namespaces it may act in (rollout restart / scale / rollback / delete pod / patch limits or
+  # HPA). One Role + RoleBinding per namespace. EMPTY = it can plan but every action is refused.
+  allowedNamespaces: []
+  # Nightly knowledge-base sync (Confluence + resolved Jira) into Qdrant.
+  ingestion:
+    schedule: "0 2 * * *"
+    suspend: false
+  protected:
+    enabled: true
+    tmpfsSize: "256Mi"
+  resources:
+    requests: { cpu: "100m", memory: "256Mi" }
+    limits:   { cpu: "500m", memory: "512Mi" }
+
+# Embedding service the remediation agent uses (deployed whenever remediation is enabled).
+embedding:
+  image: "velai-shared/embedding:latest"
+  port: 8080
+  resources:
+    requests: { cpu: "500m", memory: "2.5Gi" }
+    limits:   { cpu: "1",    memory: "4Gi" }
+
+# Vector store for RCA memory + the remediation knowledge base (deployed whenever rca or
+# remediation is enabled). Requires an API key on every request, generated into
+# <fullname>-agent-keys.
+qdrant:
+  image: "qdrant/qdrant:v1.9.2"
+  port: 6333
+  persistence:
+    enabled: true
+    size: "10Gi"
+    storageClass: ""
+  resources:
+    requests: { cpu: "100m", memory: "256Mi" }
+    limits:   { cpu: "1",    memory: "2Gi" }
 
 # ── Built-in MCP servers (optional, all off by default) ──────────────────────
 # Tool servers the RCA / conversation agents call (Kubernetes, Prometheus, New Relic,
@@ -215,6 +297,9 @@ externalSecrets:
   # that can read SSM + Secrets Manager). azure/gcp/oci/vault stores are chart-created.
   paramsStore: "aws-parameter-store"
   secretsStore: "aws-secrets-manager"
+  # azure/gcp/oci/vault: create the cluster-wide ClusterSecretStore (velai-<backend>). Set false on
+  # a second release in the same cluster (an agent instance) so it uses the one the first created.
+  createStores: true
 
 # Bundled External Secrets Operator (subchart). Set false if your cluster already
 # runs ESO — the chart's SecretStore/ExternalSecret templates still apply.
@@ -265,6 +350,11 @@ pullRefresh:
   enabled: false
   secretName: "velai-pull"
   intervalHours: 6
+  # For a release WITHOUT its own Admin Console (an agent instance in its own namespace): the
+  # namespace of the Admin Console that keeps this release's pull secret refreshed. Grants that
+  # console's ServiceAccount (same name as this release's) create + get/patch on secretName here.
+  # Set together with enabled=true.
+  consoleNamespace: ""
 
 serviceAccount:
   create: true

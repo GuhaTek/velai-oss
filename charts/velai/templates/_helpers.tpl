@@ -210,3 +210,27 @@ imagePullSecrets:
 redis://{{ include "velai.fullname" . }}-redis:{{ .Values.redis.port }}
 {{- end -}}
 {{- end -}}
+
+{{/* One key out of <fullname>-agent-keys (agent-keys.yaml). Call with (dict "root" $ "key" "<KEY>"). */}}
+{{- define "velai.agentKeyEnv" -}}
+- name: {{ .key }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "velai.fullname" .root }}-agent-keys
+      key: {{ .key }}
+{{- end -}}
+
+{{/* MCP_AUTH_TOKEN for the agents that call the MCP servers (see internal-token.yaml). */}}
+{{- define "velai.mcpTokenEnv" -}}
+- name: MCP_AUTH_TOKEN
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.internalToken.existingSecret | default (printf "%s-internal" (include "velai.fullname" .)) | quote }}
+      key: MCP_AUTH_TOKEN
+      optional: true
+{{- end -}}
+
+{{/* The agents' shared Redis (DB 1 — the orchestrator/console use DB 0). */}}
+{{- define "velai.agentRedisUrl" -}}
+redis://{{ include "velai.fullname" . }}-redis:{{ .Values.redis.port }}/1
+{{- end -}}

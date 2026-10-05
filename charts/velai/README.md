@@ -169,10 +169,37 @@ kubectl -n velai rollout status deploy/velai-mcp-prometheus
   gets `cannot get resource "clusterroles"` from Helm. It authenticates with its own
   ServiceAccount, so no kubeconfig is needed for the cluster it runs in.
 - **Caller token.** The servers refuse tool calls without `MCP_AUTH_TOKEN`, which the chart
-  generates into the `velai-internal` Secret next to `INTERNAL_API_TOKEN`. Give your RCA agent the
-  same value. Without it the servers still answer `/health`.
+  generates into the `velai-internal` Secret next to `INTERNAL_API_TOKEN`. An RCA agent in the same
+  release gets it automatically. Without it the servers still answer `/health`.
 - **Health.** Each enabled server appears on the console dashboard under **MCP health**: green
   when up and configured, amber "Degraded" when it runs but its credentials are missing or wrong.
+
+## 6. Licensed agents (optional)
+
+Conversation, RCA and Remediation are paid add-ons, off by default. Enable one only when your
+licence includes it, and add it to `externalSecrets.agents` so it receives its configuration:
+
+```bash
+helm upgrade velai velai/velai --version <chart-version> -n velai --reset-then-reuse-values \
+  --set rca.enabled=true --set rca.image=velai-shared/rca-agent:<version> \
+  --set 'externalSecrets.agents={orchestrator,oncall,rca}'
+```
+
+- **RCA** uses the chart Redis (DB 1) and a Qdrant vector store the chart deploys with it
+  (`qdrant.persistence`, 10Gi by default). Its alert webhook requires `RCA_API_KEY`, generated into
+  the `velai-agent-keys` Secret; the orchestrator and on-call agent in the same release get it
+  automatically. Its tools are the MCP servers above (`mcp.settingsScope` = the RCA agent's scope).
+- **Remediation** deploys with an embedding service and shares the RCA agent's Qdrant and Redis,
+  so enable it on the release that runs `rca`. It can act only in `remediation.allowedNamespaces`
+  (one namespaced Role each); empty = it plans but every action is refused.
+- **Named instances / tenants.** The Admin Console can run extra copies of an agent, each with its
+  own configuration (`<agent>.settingsScope`, e.g. `agent-instances/rca/<name>`), as a separate
+  release in its own namespace with the Console, orchestrator, on-call and Postgres turned off. Its
+  instance and tenant pages print the exact commands. Object names stay `velai-*` (the MCP
+  hostnames the console configures), so it's one release per namespace. Set
+  `pullRefresh.enabled=true` + `pullRefresh.consoleNamespace=<console namespace>` on such a release
+  so the console keeps its image-pull secret refreshed; it needs a copy of the `velai-license`
+  Secret.
 
 ## Key values
 
@@ -187,6 +214,10 @@ kubectl -n velai rollout status deploy/velai-mcp-prometheus
 | `mcp.<name>.enabled` / `mcp.<name>.image` | `false` / `velai-shared/mcp-<name>:latest` | built-in MCP servers: `kubernetes`, `prometheus`, `newrelic`, `opensearch`, `gitlab` |
 | `mcp.settingsScope` | `rca` | console scope the MCP credentials are synced from |
 | `mcp.protected.enabled` | `true` | the published MCP images are protected (sealed) builds |
+| `conversation` / `rca` / `remediation` `.enabled` / `.image` | `false` / `velai-shared/<agent>:latest` | licensed agents (section 6); `rca`/`remediation` add Qdrant, `remediation` the embedding service |
+| `<agent>.settingsScope` | `""` (= the agent key) | console scope an agent's config is synced from (`oncall`, `conversation`, `rca`, `remediation`) |
+| `remediation.allowedNamespaces` | `[]` | namespaces the remediation agent may act in |
+| `pullRefresh.consoleNamespace` | `""` | release without its own console: the console namespace that refreshes its pull secret |
 | `adminConsole.oidc.*` / `allowedDomain` | `""` | generic OIDC SSO (Google/JumpCloud/Okta) |
 | `adminConsole.oidc.roleGroups` | `""` | IdP group → console role, e.g. `velai-admins=admin,velai-ops=operator,velai-viewers=member` (highest wins; a Users-page assignment overrides) |
 | `adminConsole.ingress.*` | disabled | expose the console |
@@ -206,6 +237,6 @@ Full list: [`values.yaml`](values.yaml).
 
 ```bash
 helm uninstall velai -n velai
-# the generated Postgres password and internal token secrets are kept by design; delete manually if wanted:
-kubectl -n velai delete secret velai-postgresql velai-internal
+# the generated Postgres password, internal token and agent key secrets are kept by design; delete manually if wanted:
+kubectl -n velai delete secret velai-postgresql velai-internal velai-agent-keys
 ```
