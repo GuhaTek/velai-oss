@@ -1,0 +1,255 @@
+{{- if (.Values.remediation | default dict).enabled }}
+{{- $fn := include "velai.fullname" . }}
+{{- $svc := printf "%s-remediation" $fn }}
+{{- $allowedNs := .Values.remediation.allowedNamespaces | default list }}
+# Its own ServiceAccount, with write verbs ONLY for the allowlisted actions and ONLY in
+# remediation.allowedNamespaces (a namespaced Role per namespace, never cluster-wide). Empty list =
+# no Role at all: it can plan, and the API server refuses every action.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $svc }}
+  labels: {{- include "velai.labels" . | nindent 4 }}
+{{- range $ns := $allowedNs }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $svc }}-write
+  namespace: {{ $ns }}
+  labels: {{- include "velai.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $svc }}-write
+  namespace: {{ $ns }}
+  labels: {{- include "velai.labels" $ | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $svc }}
+    namespace: {{ $.Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ $svc }}-write
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $svc }}
+  labels: {{- include "velai.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: remediation
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: remediation
+      {{- with .Values.podAnnotations }}
+      annotations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ $svc }}
+      {{- include "velai.imagePullSecrets" . | nindent 6 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: remediation
+          image: {{ include "velai.image" (dict "registry" .Values.image.registry "image" .Values.remediation.image) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.remediation.port }}
+          env:
+            {{- include "velai.licenseEnv" . | nindent 12 }}
+            {{- include "velai.versionEnv" .Values.remediation.image | nindent 12 }}
+            {{- include "velai.internalTokenEnv" . | nindent 12 }}
+            {{- include "velai.mcpTokenEnv" . | nindent 12 }}
+            {{- include "velai.protectEnv" (dict "p" .Values.remediation.protected) | nindent 12 }}
+            {{- include "velai.agentKeyEnv" (dict "root" . "key" "QDRANT_API_KEY") | nindent 12 }}
+            {{- with $allowedNs }}
+            - name: K8S_ALLOWED_NAMESPACES
+              value: {{ join "," . | quote }}
+            {{- end }}
+            - name: EMBEDDING_SERVICE_URL
+              value: "http://{{ $fn }}-embedding:{{ .Values.embedding.port }}"
+            - name: QDRANT_URL
+              value: "http://{{ $fn }}-qdrant:{{ .Values.qdrant.port }}"
+            - name: REDIS_URL
+              value: {{ include "velai.agentRedisUrl" . | quote }}
+          envFrom:
+            {{- include "velai.commonEnvFrom" . | nindent 12 }}
+            {{- include "velai.agentConfigEnvFrom" (dict "root" . "agent" "remediation") | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /healthz, port: {{ .Values.remediation.port }} }
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: {{ .Values.remediation.port }} }
+            initialDelaySeconds: 10
+          resources: {{- toYaml .Values.remediation.resources | nindent 12 }}
+          {{- include "velai.protectMount" (dict "p" .Values.remediation.protected) | nindent 10 }}
+      {{- include "velai.protectVolume" (dict "p" .Values.remediation.protected) | nindent 6 }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svc }}
+  labels: {{- include "velai.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: remediation
+  ports:
+    - port: {{ .Values.remediation.port }}
+      targetPort: {{ .Values.remediation.port }}
+      name: http
+---
+# Nightly knowledge-base sync into Qdrant (same image, ingestion entry point).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $svc }}-ingest
+  labels: {{- include "velai.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.remediation.ingestion.schedule | quote }}
+  suspend: {{ .Values.remediation.ingestion.suspend }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/instance: {{ .Release.Name }}
+            app.kubernetes.io/component: remediation-ingest
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          {{- include "velai.imagePullSecrets" . | nindent 10 }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+          containers:
+            - name: ingest
+              image: {{ include "velai.image" (dict "registry" .Values.image.registry "image" .Values.remediation.image) | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              {{- if .Values.remediation.protected.enabled }}
+              command: ["python", "/app/loader.py"]
+              {{- else }}
+              command: ["python", "-m", "velai_remediation.ingestion.run_sync"]
+              {{- end }}
+              env:
+                {{- include "velai.licenseEnv" . | nindent 16 }}
+                {{- include "velai.internalTokenEnv" . | nindent 16 }}
+                {{- include "velai.protectEnv" (dict "p" .Values.remediation.protected) | nindent 16 }}
+                {{- if .Values.remediation.protected.enabled }}
+                - name: VELAI_PROTECT_ENTRY
+                  value: /app/module_entry.py
+                - name: VELAI_PROTECT_MODULE
+                  value: velai_remediation.ingestion.run_sync
+                {{- end }}
+                {{- include "velai.agentKeyEnv" (dict "root" . "key" "QDRANT_API_KEY") | nindent 16 }}
+                - name: EMBEDDING_SERVICE_URL
+                  value: "http://{{ $fn }}-embedding:{{ .Values.embedding.port }}"
+                - name: QDRANT_URL
+                  value: "http://{{ $fn }}-qdrant:{{ .Values.qdrant.port }}"
+                - name: REDIS_URL
+                  value: {{ include "velai.agentRedisUrl" . | quote }}
+              envFrom:
+                {{- include "velai.commonEnvFrom" . | nindent 16 }}
+                {{- include "velai.agentConfigEnvFrom" (dict "root" . "agent" "remediation") | nindent 16 }}
+              resources:
+                requests: { cpu: "100m", memory: "256Mi" }
+                limits:   { cpu: "500m", memory: "512Mi" }
+              {{- include "velai.protectMount" (dict "p" .Values.remediation.protected) | nindent 14 }}
+          {{- include "velai.protectVolume" (dict "p" .Values.remediation.protected) | nindent 10 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-embedding
+  labels: {{- include "velai.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: embedding
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: embedding
+    spec:
+      automountServiceAccountToken: false
+      {{- include "velai.imagePullSecrets" . | nindent 6 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: embedding
+          image: {{ include "velai.image" (dict "registry" .Values.image.registry "image" .Values.embedding.image) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.embedding.port }}
+          env:
+            {{- include "velai.internalTokenEnv" . | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /healthz, port: {{ .Values.embedding.port }} }
+            initialDelaySeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: {{ .Values.embedding.port }} }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources: {{- toYaml .Values.embedding.resources | nindent 12 }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-embedding
+  labels: {{- include "velai.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: embedding
+  ports:
+    - port: {{ .Values.embedding.port }}
+      targetPort: {{ .Values.embedding.port }}
+      name: http
+{{- end }}

@@ -26,7 +26,7 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ $fn }}-mcp-kubernetes-read
+  name: {{ $fn }}-{{ .Release.Namespace }}-mcp-kubernetes-read
   labels: {{- include "velai.labels" . | nindent 4 }}
 rules:
   # Deliberately no secrets or configmaps: both routinely hold credentials, and an MCP
@@ -44,7 +44,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ $fn }}-mcp-kubernetes-read
+  name: {{ $fn }}-{{ .Release.Namespace }}-mcp-kubernetes-read
   labels: {{- include "velai.labels" . | nindent 4 }}
 subjects:
   - kind: ServiceAccount
@@ -52,7 +52,7 @@ subjects:
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: {{ $fn }}-mcp-kubernetes-read
+  name: {{ $fn }}-{{ .Release.Namespace }}-mcp-kubernetes-read
   apiGroup: rbac.authorization.k8s.io
 ---
 {{- end }}

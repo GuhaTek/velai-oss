@@ -41,6 +41,11 @@ spec:
             {{- include "velai.protectEnv" (dict "p" .Values.oncall.protected) | nindent 12 }}
             - name: REDIS_URL
               value: {{ include "velai.redisUrl" . | quote }}
+            {{- if (.Values.rca | default dict).enabled }}
+            - name: RCA_BASE_URL
+              value: "http://{{ $fn }}-rca-agent:{{ .Values.rca.port }}"
+            {{- include "velai.agentKeyEnv" (dict "root" . "key" "RCA_API_KEY") | nindent 12 }}
+            {{- end }}
           envFrom:
             {{- include "velai.commonEnvFrom" . | nindent 12 }}
             {{- include "velai.agentConfigEnvFrom" (dict "root" . "agent" "oncall") | nindent 12 }}

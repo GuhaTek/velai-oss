@@ -1,0 +1,79 @@
+{{- if (.Values.conversation | default dict).enabled }}
+{{- $fn := include "velai.fullname" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-conversation
+  labels: {{- include "velai.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.conversation.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: conversation
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: conversation
+      {{- with .Values.podAnnotations }}
+      annotations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      {{- include "velai.imagePullSecrets" . | nindent 6 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: conversation
+          image: {{ include "velai.image" (dict "registry" .Values.image.registry "image" .Values.conversation.image) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.conversation.port }}
+          env:
+            {{- include "velai.licenseEnv" . | nindent 12 }}
+            {{- include "velai.versionEnv" .Values.conversation.image | nindent 12 }}
+            {{- include "velai.internalTokenEnv" . | nindent 12 }}
+            {{- include "velai.mcpTokenEnv" . | nindent 12 }}
+            {{- include "velai.protectEnv" (dict "p" .Values.conversation.protected) | nindent 12 }}
+            {{- if .Values.oncall.enabled }}
+            - name: ONCALL_BASE_URL
+              value: "http://{{ $fn }}-oncall:{{ .Values.oncall.port }}"
+            {{- end }}
+          envFrom:
+            {{- include "velai.commonEnvFrom" . | nindent 12 }}
+            {{- include "velai.agentConfigEnvFrom" (dict "root" . "agent" "conversation") | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /healthz, port: {{ .Values.conversation.port }} }
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: {{ .Values.conversation.port }} }
+            initialDelaySeconds: 10
+          resources: {{- toYaml .Values.conversation.resources | nindent 12 }}
+          {{- include "velai.protectMount" (dict "p" .Values.conversation.protected) | nindent 10 }}
+      {{- include "velai.protectVolume" (dict "p" .Values.conversation.protected) | nindent 6 }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-conversation
+  labels: {{- include "velai.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: conversation
+  ports:
+    - port: {{ .Values.conversation.port }}
+      targetPort: {{ .Values.conversation.port }}
+      name: http
+{{- end }}
