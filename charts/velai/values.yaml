@@ -56,6 +56,11 @@ adminConsole:
     host: ""              # e.g. velai.your-company.com
     annotations: {}
     tls: []               # [{secretName: velai-tls, hosts: [velai.your-company.com]}]
+  # Extra names added to the console Role, for resources this release doesn't render itself
+  # (e.g. agents owned by another release in this namespace, or standalone Deployments).
+  rbac:
+    extraDeployments: []      # appended to apps/deployments patch resourceNames
+    extraExternalSecrets: []  # appended to external-secrets.io/externalsecrets get/patch resourceNames
   resources:
     requests: { cpu: "50m", memory: "128Mi" }
     limits:   { cpu: "500m", memory: "512Mi" }
