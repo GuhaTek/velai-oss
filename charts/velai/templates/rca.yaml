@@ -16,9 +16,7 @@ spec:
       labels:
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: rca-agent
-      {{- with .Values.podAnnotations }}
-      annotations: {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- include "velai.mcpPodAnnotations" . | nindent 6 }}
     spec:
       # RCA reaches Kubernetes only through the kubernetes MCP server; it has no API client.
       automountServiceAccountToken: false
@@ -61,8 +59,8 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 15
           resources: {{- toYaml .Values.rca.resources | nindent 12 }}
-          {{- include "velai.protectMount" (dict "p" .Values.rca.protected) | nindent 10 }}
-      {{- include "velai.protectVolume" (dict "p" .Values.rca.protected) | nindent 6 }}
+          {{- include "velai.protectMount" (dict "p" .Values.rca.protected "root" .) | nindent 10 }}
+      {{- include "velai.protectVolume" (dict "p" .Values.rca.protected "root" .) | nindent 6 }}
       {{- with .Values.tolerations }}
       tolerations: {{- toYaml . | nindent 8 }}
       {{- end }}

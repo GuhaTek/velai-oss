@@ -3,7 +3,8 @@ Built-in MCP servers (see `mcp` in values.yaml). One Deployment + Service per en
 named <fullname>-mcp-<name>. Credentials come from the settings scope `mcp.settingsScope`, synced
 by externalsecrets.yaml into <fullname>-mcp-secrets (+ <fullname>-mcp-params on AWS); each pod
 references only its own keys, all optional, so a server with nothing configured still starts and
-reports "degraded" on /health.
+reports "degraded" on /health. The one required reference is MCP_AUTH_TOKEN (velai.mcpTokenEnv):
+the same Secret and key the calling agents read, so caller and server can never disagree.
 */}}
 {{- $enabled := include "velai.mcpEnabled" . -}}
 {{- if $enabled }}
@@ -14,7 +15,6 @@ reports "degraded" on /health.
 {{- $catalog := include "velai.mcpCatalog" . | fromYaml -}}
 {{- $secretsName := printf "%s-mcp-secrets" $fn -}}
 {{- $paramsName := ternary (printf "%s-mcp-params" $fn) $secretsName (eq .Values.secretBackend "aws") -}}
-{{- $tokenSecret := .Values.internalToken.existingSecret | default (printf "%s-internal" $fn) -}}
 {{- if .Values.mcp.kubernetes.enabled }}
 # ── Kubernetes MCP: read-only, cluster-wide (needs cluster-admin to install) ─────
 apiVersion: v1
@@ -77,9 +77,7 @@ spec:
       labels:
         app.kubernetes.io/instance: {{ $.Release.Name }}
         app.kubernetes.io/component: mcp-{{ $name }}
-      {{- with $.Values.podAnnotations }}
-      annotations: {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- include "velai.mcpPodAnnotations" $ | nindent 6 }}
     spec:
       {{- if eq $name "kubernetes" }}
       serviceAccountName: {{ $fn }}-mcp-kubernetes
@@ -109,12 +107,7 @@ spec:
               value: /app/server.py
             {{- end }}
             # Callers must present this; without it the server answers only /health.
-            - name: MCP_AUTH_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $tokenSecret | quote }}
-                  key: MCP_AUTH_TOKEN
-                  optional: true
+            {{- include "velai.mcpTokenEnv" $ | nindent 12 }}
             {{- range $key := $keys.params }}
             - name: {{ $key }}
               valueFrom:
@@ -138,8 +131,8 @@ spec:
                 name: {{ $.Values.license.existingSecret | quote }}
                 optional: true
           resources: {{- toYaml $.Values.mcp.resources | nindent 12 }}
-          {{- include "velai.protectMount" (dict "p" $.Values.mcp.protected) | nindent 10 }}
-      {{- include "velai.protectVolume" (dict "p" $.Values.mcp.protected) | nindent 6 }}
+          {{- include "velai.protectMount" (dict "p" $.Values.mcp.protected "root" $) | nindent 10 }}
+      {{- include "velai.protectVolume" (dict "p" $.Values.mcp.protected "root" $) | nindent 6 }}
       {{- with $.Values.tolerations }}
       tolerations: {{- toYaml . | nindent 8 }}
       {{- end }}

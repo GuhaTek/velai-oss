@@ -64,9 +64,7 @@ spec:
       labels:
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: remediation
-      {{- with .Values.podAnnotations }}
-      annotations: {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- include "velai.mcpPodAnnotations" . | nindent 6 }}
     spec:
       serviceAccountName: {{ $svc }}
       {{- include "velai.imagePullSecrets" . | nindent 6 }}
@@ -109,8 +107,8 @@ spec:
             httpGet: { path: /healthz, port: {{ .Values.remediation.port }} }
             initialDelaySeconds: 10
           resources: {{- toYaml .Values.remediation.resources | nindent 12 }}
-          {{- include "velai.protectMount" (dict "p" .Values.remediation.protected) | nindent 10 }}
-      {{- include "velai.protectVolume" (dict "p" .Values.remediation.protected) | nindent 6 }}
+          {{- include "velai.protectMount" (dict "p" .Values.remediation.protected "root" .) | nindent 10 }}
+      {{- include "velai.protectVolume" (dict "p" .Values.remediation.protected "root" .) | nindent 6 }}
       {{- with .Values.tolerations }}
       tolerations: {{- toYaml . | nindent 8 }}
       {{- end }}

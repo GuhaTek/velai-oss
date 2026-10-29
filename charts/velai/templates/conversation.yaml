@@ -16,9 +16,7 @@ spec:
       labels:
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: conversation
-      {{- with .Values.podAnnotations }}
-      annotations: {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- include "velai.mcpPodAnnotations" . | nindent 6 }}
     spec:
       automountServiceAccountToken: false
       {{- include "velai.imagePullSecrets" . | nindent 6 }}
@@ -54,8 +52,8 @@ spec:
             httpGet: { path: /healthz, port: {{ .Values.conversation.port }} }
             initialDelaySeconds: 10
           resources: {{- toYaml .Values.conversation.resources | nindent 12 }}
-          {{- include "velai.protectMount" (dict "p" .Values.conversation.protected) | nindent 10 }}
-      {{- include "velai.protectVolume" (dict "p" .Values.conversation.protected) | nindent 6 }}
+          {{- include "velai.protectMount" (dict "p" .Values.conversation.protected "root" .) | nindent 10 }}
+      {{- include "velai.protectVolume" (dict "p" .Values.conversation.protected "root" .) | nindent 6 }}
       {{- with .Values.tolerations }}
       tolerations: {{- toYaml . | nindent 8 }}
       {{- end }}
