@@ -1,7 +1,13 @@
 {{- /* Shared tokens for the agents' internal endpoints and the MCP servers: existingSecret >
        preserved-on-upgrade > generated. Kept on uninstall-free upgrades so running pods never
        see them change. MCP_AUTH_TOKEN is added to an existing Secret on the first upgrade that
-       renders it, without touching INTERNAL_API_TOKEN. */ -}}
+       renders it, without touching INTERNAL_API_TOKEN.
+
+       The ONLY template that generates MCP_AUTH_TOKEN; every MCP server and every agent that calls
+       them reads it from this Secret (velai.mcpTokenSecret). Do not copy this file into another
+       chart: lookup is namespace-scoped and empty on client-side renders, so a second copy makes
+       a second, different token and every MCP call fails with 401. A release elsewhere should set
+       internalToken.existingSecret instead. */ -}}
 {{- if not .Values.internalToken.existingSecret }}
 {{- $name := printf "%s-internal" (include "velai.fullname" .) -}}
 {{- $existing := (lookup "v1" "Secret" .Release.Namespace $name) -}}

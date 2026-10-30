@@ -224,7 +224,10 @@ mcp:
 # endpoints (they refuse calls without it). Generated into a chart-managed Secret on first
 # install and kept across upgrades; set existingSecret to supply your own (key
 # INTERNAL_API_TOKEN). The same Secret carries MCP_AUTH_TOKEN, which the MCP servers require
-# from callers (without it they answer only /health); give your RCA agent the same value.
+# from callers (without it they answer only /health). The MCP servers and the agents that call
+# them (rca, conversation, remediation) all read it from this one Secret, mounted at
+# /var/run/secrets/mcp/token; their pods do not start without the key, and an existingSecret
+# without MCP_AUTH_TOKEN fails the install.
 internalToken:
   existingSecret: ""
 

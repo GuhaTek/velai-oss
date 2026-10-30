@@ -139,20 +139,42 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
   value: /var/velai-mods
 {{- end }}
 {{- end -}}
+{{- /* Both also take an optional `root` (the chart context): set, they add the shared MCP token
+       mount (see velai.mcpTokenEnv). No subPath, so kubelet can update the file in place. */ -}}
 {{- define "velai.protectMount" -}}
-{{- if .p.enabled }}
+{{- if or .p.enabled .root }}
 volumeMounts:
+{{- if .p.enabled }}
   - name: velai-mods
     mountPath: /var/velai-mods
 {{- end }}
+{{- with .root }}
+  - name: mcp-token
+    mountPath: {{ include "velai.mcpTokenDir" . }}
+    readOnly: true
+{{- end }}
+{{- end }}
 {{- end -}}
 {{- define "velai.protectVolume" -}}
-{{- if .p.enabled }}
+{{- if or .p.enabled .root }}
 volumes:
+{{- if .p.enabled }}
   - name: velai-mods
     emptyDir:
       medium: Memory
       sizeLimit: {{ .p.tmpfsSize | quote }}
+{{- end }}
+{{- with .root }}
+  - name: mcp-token
+    secret:
+      secretName: {{ include "velai.mcpTokenSecret" . | quote }}
+      optional: false
+      # 0444: the pods run as uid 1000 with no fsGroup, and Secret files are owned by root.
+      defaultMode: 0444
+      items:
+        - key: MCP_AUTH_TOKEN
+          path: token
+{{- end }}
 {{- end }}
 {{- end -}}
 
@@ -220,14 +242,58 @@ redis://{{ include "velai.fullname" . }}-redis:{{ .Values.redis.port }}
       key: {{ .key }}
 {{- end -}}
 
-{{/* MCP_AUTH_TOKEN for the agents that call the MCP servers (see internal-token.yaml). */}}
+{{/* The Secret every MCP server and every agent that calls them reads MCP_AUTH_TOKEN from:
+     <fullname>-internal, which internal-token.yaml generates (the ONLY template that creates the
+     token), or the pre-created internalToken.existingSecret. One Secret, so the two sides of a
+     call can never hold different tokens. */}}
+{{- define "velai.mcpTokenSecret" -}}
+{{- .Values.internalToken.existingSecret | default (printf "%s-internal" (include "velai.fullname" .)) -}}
+{{- end -}}
+
+{{/* Where the token is mounted; the Python reader (read_mcp_token) defaults to the same file. */}}
+{{- define "velai.mcpTokenDir" -}}/var/run/secrets/mcp{{- end -}}
+
+{{/* MCP_AUTH_TOKEN for the MCP servers and the agents that call them. The code reads the mounted
+     file first (kubelet rewrites it when the Secret changes, so a rotation needs no restart); the
+     env var is the fallback for images that predate that reader. optional: false on both, so a
+     missing key stops the pod at startup (CreateContainerConfigError) instead of starting it with
+     no token and answering every tool call with 401. */}}
 {{- define "velai.mcpTokenEnv" -}}
+- name: MCP_AUTH_TOKEN_FILE
+  value: {{ include "velai.mcpTokenDir" . }}/token
 - name: MCP_AUTH_TOKEN
   valueFrom:
     secretKeyRef:
-      name: {{ .Values.internalToken.existingSecret | default (printf "%s-internal" (include "velai.fullname" .)) | quote }}
+      name: {{ include "velai.mcpTokenSecret" . | quote }}
       key: MCP_AUTH_TOKEN
-      optional: true
+      optional: false
+{{- end -}}
+
+{{/* Pod annotation value that changes with the token, so `helm upgrade` rolls the MCP servers and
+     the agents together when it changes. Generated token: the hash of internal-token.yaml's
+     render. Pre-created Secret: the hash of its key, and the render FAILS when that Secret exists
+     without MCP_AUTH_TOKEN. lookup is empty on client-side renders (helm template, --dry-run), so
+     there the check is skipped and optional: false on the pods is the guard. */}}
+{{- define "velai.mcpTokenChecksum" -}}
+{{- with .Values.internalToken.existingSecret -}}
+{{- $secret := lookup "v1" "Secret" $.Release.Namespace . -}}
+{{- $data := ($secret).data | default dict -}}
+{{- if and $secret (not (hasKey $data "MCP_AUTH_TOKEN")) -}}
+{{- fail (printf "internalToken.existingSecret: Secret %s/%s has no key MCP_AUTH_TOKEN. The MCP servers and the agents that call them read the shared token from it, and without the key every MCP call fails with 401. Add the key (a random string), or unset internalToken.existingSecret so the chart generates it in %s-internal." $.Release.Namespace . (include "velai.fullname" $)) -}}
+{{- end -}}
+{{- index $data "MCP_AUTH_TOKEN" | default "" | sha256sum -}}
+{{- else -}}
+{{- include (print .Template.BasePath "/internal-token.yaml") . | sha256sum -}}
+{{- end -}}
+{{- end -}}
+
+{{/* Pod template annotations: the token checksum plus the user's podAnnotations. */}}
+{{- define "velai.mcpPodAnnotations" -}}
+annotations:
+  checksum/secret: {{ include "velai.mcpTokenChecksum" . | quote }}
+  {{- with .Values.podAnnotations }}
+  {{- toYaml . | nindent 2 }}
+  {{- end }}
 {{- end -}}
 
 {{/* The agents' shared Redis (DB 1 — the orchestrator/console use DB 0). */}}
