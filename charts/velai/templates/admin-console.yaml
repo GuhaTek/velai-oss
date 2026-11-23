@@ -69,6 +69,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            # The console's own ServiceAccount: agent-instance releases bind it (consoleAccess) so
+            # the instance page's Save & Apply can sync and restart them.
+            - name: POD_SERVICE_ACCOUNT
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
             - name: HEALTH_TARGETS
               value: {{ toJson $targets | quote }}
             # The MCP servers this release deploys (see `mcp` in values.yaml), for the dashboard's

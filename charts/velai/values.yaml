@@ -360,9 +360,20 @@ pullRefresh:
   intervalHours: 6
   # For a release WITHOUT its own Admin Console (an agent instance in its own namespace): the
   # namespace of the Admin Console that keeps this release's pull secret refreshed. Grants that
-  # console's ServiceAccount (same name as this release's) create + get/patch on secretName here.
-  # Set together with enabled=true.
+  # console's ServiceAccount (consoleAccess.serviceAccount, else the same name as this release's)
+  # create + get/patch on secretName here. Set together with enabled=true.
   consoleNamespace: ""
+
+# ── Console access for an agent-instance release ────────────────────────────
+# For a release WITHOUT its own Admin Console (an agent instance in its own namespace, as the
+# console's instance page prints it): the console that manages it. Set `namespace` and this
+# release grants that console's ServiceAccount a Role (<fullname>-console-apply) in this namespace
+# to force-sync this release's ExternalSecrets (get/patch) and restart its agent Deployments
+# (get/patch) — the instance page's Save & Apply. It names exactly the objects the console's own
+# Role names in its release (velai.consoleApplyRules), nothing else. Empty = no access.
+consoleAccess:
+  namespace: ""         # the console's namespace, e.g. velai
+  serviceAccount: ""    # the console's ServiceAccount; empty = this release's ServiceAccount name
 
 serviceAccount:
   create: true
