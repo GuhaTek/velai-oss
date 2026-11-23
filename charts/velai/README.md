@@ -199,7 +199,11 @@ helm upgrade velai velai/velai --version <chart-version> -n velai --reset-then-r
   hostnames the console configures), so it's one release per namespace. Set
   `pullRefresh.enabled=true` + `pullRefresh.consoleNamespace=<console namespace>` on such a release
   so the console keeps its image-pull secret refreshed; it needs a copy of the `velai-license`
-  Secret.
+  Secret. Set `consoleAccess.namespace=<console namespace>` (and `consoleAccess.serviceAccount`
+  when the console's ServiceAccount has another name) so the instance page's **Save & Apply** can
+  force-sync and restart the release: it grants that ServiceAccount a Role
+  (`<fullname>-console-apply`) on this release's ExternalSecrets and agent Deployments only. Each
+  instance is its own release, so several instances of one agent keep separate credentials.
 
 ## Key values
 
@@ -218,6 +222,7 @@ helm upgrade velai velai/velai --version <chart-version> -n velai --reset-then-r
 | `<agent>.settingsScope` | `""` (= the agent key) | console scope an agent's config is synced from (`oncall`, `conversation`, `rca`, `remediation`) |
 | `remediation.allowedNamespaces` | `[]` | namespaces the remediation agent may act in |
 | `pullRefresh.consoleNamespace` | `""` | release without its own console: the console namespace that refreshes its pull secret |
+| `consoleAccess.namespace` / `.serviceAccount` | `""` / `""` (= this release's SA name) | release without its own console: the console that may Save & Apply it (Role `<fullname>-console-apply`: get/patch on its ExternalSecrets and agent Deployments) |
 | `adminConsole.oidc.*` / `allowedDomain` | `""` | generic OIDC SSO (Google/JumpCloud/Okta) |
 | `adminConsole.oidc.roleGroups` | `""` | IdP group → console role, e.g. `velai-admins=admin,velai-ops=operator,velai-viewers=member` (highest wins; a Users-page assignment overrides) |
 | `adminConsole.ingress.*` | disabled | expose the console |

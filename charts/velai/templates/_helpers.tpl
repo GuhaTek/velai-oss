@@ -300,3 +300,54 @@ annotations:
 {{- define "velai.agentRedisUrl" -}}
 redis://{{ include "velai.fullname" . }}-redis:{{ .Values.redis.port }}/1
 {{- end -}}
+
+{{/*
+Save & Apply rules: the Deployments the Admin Console may restart and the ExternalSecrets it may
+force-sync in this release — the enabled agents and MCP servers, the ExternalSecrets rendered for
+externalSecrets.agents (+ the MCP pair), plus adminConsole.rbac.extraDeployments /
+extraExternalSecrets. The ONE source for both the console's own Role (<fullname>-console) and the
+Role an instance release grants a console in another namespace (<fullname>-console-apply, see
+consoleAccess), so the two can never name different objects.
+Args: dict "root" $ "deployVerbs" (list ...) — the own Role needs only patch (it already reads
+every Deployment for health); the cross-namespace Role also needs get, for rollout status.
+Renders nothing when the release has no such objects. Callers `trim` it and nindent.
+*/}}
+{{- define "velai.consoleApplyRules" -}}
+{{- $root := .root -}}
+{{- $fn := include "velai.fullname" $root -}}
+{{- $agents := list -}}
+{{- if $root.Values.orchestrator.enabled }}{{ $agents = append $agents "orchestrator" }}{{ end -}}
+{{- if $root.Values.oncall.enabled }}{{ $agents = append $agents "oncall" }}{{ end -}}
+{{- if ($root.Values.conversation | default dict).enabled }}{{ $agents = append $agents "conversation" }}{{ end -}}
+{{- if ($root.Values.rca | default dict).enabled }}{{ $agents = append $agents "rca-agent" }}{{ end -}}
+{{- $mcpOn := include "velai.mcpEnabled" $root -}}
+{{- range $m := splitList "," $mcpOn }}{{ if $m }}{{ $agents = append $agents (printf "mcp-%s" $m) }}{{ end }}{{ end -}}
+{{- $rbac := ($root.Values.adminConsole.rbac | default dict) -}}
+{{- $deploys := list -}}
+{{- range $a := $agents }}{{ $deploys = append $deploys (printf "%s-%s" $fn $a) }}{{ end -}}
+{{- range $d := ($rbac.extraDeployments | default list) }}{{ $deploys = append $deploys $d }}{{ end -}}
+{{- $deploys = uniq $deploys -}}
+{{- $ess := list -}}
+{{- if $root.Values.externalSecrets.enabled -}}
+{{- range $a := $root.Values.externalSecrets.agents }}{{ $ess = append $ess (printf "%s-%s-params" $fn $a) }}{{ $ess = append $ess (printf "%s-%s-secrets" $fn $a) }}{{ end -}}
+{{- if $mcpOn }}{{ $ess = append $ess (printf "%s-mcp-params" $fn) }}{{ $ess = append $ess (printf "%s-mcp-secrets" $fn) }}{{ end -}}
+{{- end -}}
+{{- range $e := ($rbac.extraExternalSecrets | default list) }}{{ $ess = append $ess $e }}{{ end -}}
+{{- $ess = uniq $ess -}}
+{{- if $deploys }}
+# Save & Apply (restart to pick up re-synced config) and on/off (scale 0/1) — patch on this
+# release's agent + MCP Deployments, plus any in adminConsole.rbac.extraDeployments.
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  resourceNames: [{{ range $i, $d := $deploys }}{{ if $i }}, {{ end }}{{ $d | quote }}{{ end }}]
+  verbs: [{{ range $i, $v := .deployVerbs }}{{ if $i }}, {{ end }}{{ $v | quote }}{{ end }}]
+{{- end }}
+{{- if $ess }}
+# Save & Apply: force-sync the agents' and MCP servers' ExternalSecrets (the console's saved
+# config), plus any in adminConsole.rbac.extraExternalSecrets.
+- apiGroups: ["external-secrets.io"]
+  resources: ["externalsecrets"]
+  resourceNames: [{{ range $i, $e := $ess }}{{ if $i }}, {{ end }}{{ $e | quote }}{{ end }}]
+  verbs: ["get", "patch"]
+{{- end }}
+{{- end -}}
