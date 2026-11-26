@@ -56,6 +56,9 @@ adminConsole:
     host: ""              # e.g. velai.your-company.com
     annotations: {}
     tls: []               # [{secretName: velai-tls, hosts: [velai.your-company.com]}]
+    # Paths on this host that go to the orchestrator instead of the console, e.g. ["/webhook"]
+    # for the alert webhook (POST /webhook/alerts). Prefix match. Empty: the console gets all.
+    orchestratorPaths: []
   # Extra names added to the console Role, for resources this release doesn't render itself
   # (e.g. agents owned by another release in this namespace, or standalone Deployments).
   rbac:

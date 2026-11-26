@@ -226,6 +226,7 @@ helm upgrade velai velai/velai --version <chart-version> -n velai --reset-then-r
 | `adminConsole.oidc.*` / `allowedDomain` | `""` | generic OIDC SSO (Google/JumpCloud/Okta) |
 | `adminConsole.oidc.roleGroups` | `""` | IdP group → console role, e.g. `velai-admins=admin,velai-ops=operator,velai-viewers=member` (highest wins; a Users-page assignment overrides) |
 | `adminConsole.ingress.*` | disabled | expose the console |
+| `adminConsole.ingress.orchestratorPaths` | `[]` | paths on the console host routed to the orchestrator, e.g. `["/webhook"]` for alerts |
 | `adminConsole.rbac.extraDeployments` | `[]` | foreign-owned or standalone Deployment names the console may `patch` (Save & Apply restart, on/off scale) |
 | `adminConsole.rbac.extraExternalSecrets` | `[]` | foreign-owned ExternalSecret names the console may `get`/`patch` (Save & Apply force-sync) |
 | `postgresql.enabled` | `true` | in-cluster DB; set `externalUrl` to use your own |
