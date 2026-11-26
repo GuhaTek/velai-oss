@@ -20,6 +20,23 @@ spec:
     - host: {{ $ing.host | quote }}
       http:
         paths:
+          {{- /* Orchestrator paths (e.g. /webhook) ride on the console host. They render before
+                 "/" because an ALB evaluates one Ingress's paths in order: after the catch-all,
+                 the console would answer them. */}}
+          {{- if .Values.orchestrator.enabled }}
+          {{- range $ing.orchestratorPaths }}
+          {{- if or (not (hasPrefix "/" .)) (eq . "/") }}
+          {{- fail (printf "adminConsole.ingress.orchestratorPaths: %q must start with \"/\" and must not be \"/\" (that is the console)" .) }}
+          {{- end }}
+          - path: {{ . | quote }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fn }}-orchestrator
+                port:
+                  number: {{ $.Values.orchestrator.port }}
+          {{- end }}
+          {{- end }}
           - path: /
             pathType: Prefix
             backend:
